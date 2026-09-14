@@ -1,0 +1,11 @@
+.operator-tools/
+node_modules/
+.jotnow/deployment/downloads/
+.jotnow/deployment/quarantine/
+.jotnow/deployment/adapter-work/
+.jotnow/deployment/update.lock/
+.jotnow/deployment/update.lock.recovery/
+.jotnow/deployment/*.tmp
+.env
+.env.*
+!.env.example

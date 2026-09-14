@@ -1,0 +1,22 @@
+name: Template verification
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  node-only-runtime:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.13.1
+      - name: Syntax-check vendored source without fetching dependencies
+        run: |
+          set -euo pipefail
+          find vendor -type f -name '*.mjs' -print0 | sort -z | xargs -0 -n1 node --check
+          test -z "$(find vendor -type f \( -name '*.test.*' -o -name '*.key' -o -name '.env*' \) -print -quit)"

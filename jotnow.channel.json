@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "channel": "production",
+  "enabled": false,
+  "releaseEndpoint": "https://jotnow-byo-release.example.invalid/v1/releases/download",
+  "r2Origin": "https://jotnow-byo-artifacts.example.invalid",
+  "storeId": 0,
+  "productId": 0,
+  "trustList": "trust/production-v1.json"
+}
