@@ -1,15 +1,46 @@
-# jotnow self-host deployment template
+# Jotnow self-host deployment template
 
-This reviewable template deploys the jotnow web app to your Cloudflare Pages
-project and its backend to your Supabase project. It contains deployment code
-and a public signature trust root only—no application payload, private source,
-license key, database credential, or provider credential.
+Deploy Jotnow to your own Supabase and Cloudflare Pages projects.
 
-The checked-in channel names the production release endpoint, licensed SKU,
-and production signature trust root. Enrollment remains disabled: Link and
-Update refuse before contacting a provider. This template is launch preparation
-and is not yet an installable offer. The deployment workflow has no schedule
-while enrollment is disabled.
+> **Enrollment is not open yet.** Link and Update are disabled. The steps below
+> describe setup once enrollment opens; automatic updates are also currently off.
+
+## Setup at a glance
+
+1. **Create your repository** using this template.
+2. **Prepare your projects:** a Supabase project and, for `full` mode, a
+   Cloudflare Pages Direct Upload project. [Project setup](#project-setup)
+3. **Add GitHub secrets and variables** for your license and projects.
+   [Repository configuration](#repository-configuration)
+4. **Configure Supabase Auth** and create your operator account.
+   [Authentication](#authentication)
+5. **Link your license:** in **Actions → Jotnow deployment → Run workflow**,
+   select operation `link` and wait for it to finish.
+6. **Install:** run the same workflow with operation `update`. It uses your
+   selected deployment mode (`full` by default).
+7. **Check the installation:** run operation `doctor` for read-only diagnostics.
+   [Doctor and recovery](#doctor-and-recovery)
+
+For later releases, run `update` again. If a run fails, keep its recovery state
+and follow [the recovery guidance](#recovering-a-failed-run).
+
+## Setup details
+
+### Project setup
+
+Choose `full` for the web app and backend, or `backend-only` for Supabase alone.
+
+Before the first `full` deployment, create a **Direct Upload Cloudflare Pages
+project** in the account named by `CLOUDFLARE_ACCOUNT_ID`. Its name must exactly
+match `JOTNOW_PAGES_PROJECT`, and its production branch must match
+`JOTNOW_PAGES_BRANCH` (default `main`). Give the deployment token Pages edit
+access in that account. The updater checks that this project exists and that
+the name and branch match; it **does not create the project**. An empty project
+with no deployments is sufficient. Backend-only mode needs no Pages project.
+
+### Repository configuration
+
+In your repository, open **Settings → Secrets and variables → Actions**.
 
 Set repository secrets for `JOTNOW_LICENSE_KEY`, `JOTNOW_DATABASE_URL`, and
 `SUPABASE_ACCESS_TOKEN`. Set repository variables for the project ref and
@@ -23,13 +54,7 @@ broadest credential in the workflow. Jotnow never receives these values.
 Set `JOTNOW_DEPLOYMENT_MODE` to `full` or `backend-only`; updates use
 that value. If it is unset, updates use `full`.
 
-Before the first `full` deployment, create a **Direct Upload Cloudflare Pages
-project** in the account named by `CLOUDFLARE_ACCOUNT_ID`. Its name must exactly
-match `JOTNOW_PAGES_PROJECT`, and its production branch must match
-`JOTNOW_PAGES_BRANCH` (default `main`). Give the deployment token Pages edit
-access in that account. The updater checks that this project exists and that
-the name and branch match; it **does not create the project**. An empty project
-with no deployments is sufficient. Backend-only mode needs no Pages project.
+### Authentication
 
 Configure Auth manually in **your Supabase project's Dashboard → Authentication
 → URL Configuration**: set Site URL to the HTTPS origin that will serve your
@@ -45,6 +70,88 @@ default. Create your operator account in the project's Dashboard with its
 email confirmed and a password. GitHub login is optional and requires provider
 configuration in that same project. Password recovery is an operator task in
 your own project; the Dashboard's mail-based recovery actions require SMTP.
+
+## Updates and maintenance
+
+Every update run performs the recurring embedding
+backfill, including an up-to-date or pinned run. Backfill is also available
+manually. Backend-only mode never invokes Cloudflare Pages. Migration drift is
+fatal; use the manual repair guide and the explicit repair command—scheduled
+updates never rewrite migration history.
+
+Automated backups are recommended but never used as a feature or deployment
+gate. A failed update retains its sanitized recovery checkpoint in the
+configuration branch; retry the same target. Do not select another release
+until the incomplete attempt is deliberately resolved.
+
+### Adding Pages to a backend-only installation
+
+To add Pages hosting to a completed backend-only installation, first create
+the Pages project and configure its credentials, then select `full` for a
+manual update with a newer release available. Keep `JOTNOW_DEPLOYMENT_MODE`
+set to `full` for later updates. This requires the updated template bootstrap;
+old signed updaters refuse the transition by themselves. An incomplete update
+must be recovered in its recorded mode before changing mode. Once widened,
+full → backend-only is refused. If the backend is already on the latest
+release, this transition refuses explicitly; publishing that same release's
+web bundle separately is not yet supported.
+
+### Automatic updates — when enrollment opens
+
+While enrollment is disabled, deploy runs are manual and this scaffold has no
+weekly schedule. When enrollment opens, restore all three workflow settings
+in `.github/workflows/jotnow-deployment.yml` together:
+
+- Under `on`, add `schedule: [{ cron: '17 4 * * 1' }]` (Mondays, 04:17 UTC).
+- Set the selected-operation step's `if` to
+  `github.event_name == 'schedule' || inputs.operation != 'doctor'`.
+- Set its `OPERATION` environment value to
+  `${{ github.event_name == 'schedule' && 'update' || inputs.operation }}`.
+
+A cron trigger alone is insufficient: scheduled events have no operation input.
+Enable the deployment workflow in the customer repository after enrollment opens.
+
+## Doctor and recovery
+
+Run Doctor for read-only migration drift, compatibility epoch, deployment
+marker, schema, backfill, Edge Function, and provider diagnostics. It reads the
+expected migration inventory and epoch from the signed manifest in the installed
+immutable control directory; the template does not contain release migration
+SQL. Doctor runs from the current template after authenticating that inventory,
+so diagnostic fixes also apply when the installed signed updater is older.
+Authentication failure stops before diagnostic provider requests. Before the first authenticated install, Doctor reports that no trusted
+inventory is available and makes no provider request. Its step receives only the
+database URL, Supabase project/token, and optional `OPENAI_API_KEY` and
+`VOYAGE_API_KEY`. The Voyage probe runs only when `allow_billable_voyage` is
+explicitly selected because it can incur a small provider charge.
+
+### Recovering a failed run
+
+If the first install fails, resolve its stated prerequisite and rerun `update`
+against the same release. Doctor cannot diagnose a pre-install environment:
+it requires the signed inventory left by an authenticated install. Check the
+database connection, Management API access to the intended Supabase project,
+and, for full mode, the existing Pages project and its production branch.
+Do not reset the backend or edit `.jotnow` recovery state to bypass a refusal.
+
+Doctor reports problems; recovery is a separate operator action:
+
+| Diagnostic                                        | Next action                                                                                                                                                                                                                              |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Interrupted update                                | Resolve the reported prerequisite and rerun Update for the recorded release and mode. Preserve the recovery state.                                                                                                                       |
+| Pending migrations without an incomplete update   | Verify the release inventory and database history before choosing a recovery. Update refuses replay of an already-installed release; it is not a general schema repair command.                                                          |
+| Remote-only migration history                     | Check the intended release and database first. Use `repair-guide`; `migration-repair` changes history only, requires exact typed confirmation, and cannot execute or undo SQL. Independently verify SQL effects before changing history. |
+| Notes eligible for backfill                       | Run Backfill. It queues eligible notes, including Trash, without resetting existing jobs. A zero gap does not establish that queued jobs completed.                                                                                      |
+| Missing marker, epoch mismatch, or damaged schema | Investigate the installed release and database. Doctor does not rewrite these objects; do not change migration history merely to clear the diagnostic.                                                                                   |
+| Function or provider check fails                  | Restore the intended deployment, credential, or dependency, then rerun Doctor. ACTIVE metadata does not prove function invocation or runtime provider configuration works.                                                               |
+
+The database URL and Supabase project ref must identify the same intended
+project; Doctor cannot verify their provenance. Its schema checks are structural:
+a green result does not verify SQL function bodies, RLS policies, or all indexes.
+Keep inspecting individual checks when other checks are unavailable. Optional
+unconfigured providers still prevent the all-healthy exit status.
+
+### License linking and unlinking
 
 Run the Link workflow once. It first commits a sanitized linking intent, then
 activates the license, commits the exact instance identity, and marks it active.
@@ -70,81 +177,26 @@ instance validates, or when same-key and same-SKU validation proves there are no
 active slots. A different license key is refused before any provider request. Link and Unlink
 therefore resume from a fresh checkout using the configuration branch.
 
-While enrollment is disabled, deploy runs are manual and this scaffold has no
-weekly schedule. When enrollment opens, restore all three workflow settings
-in `.github/workflows/jotnow-deployment.yml` together:
+## Technical details
 
-- Under `on`, add `schedule: [{ cron: '17 4 * * 1' }]` (Mondays, 04:17 UTC).
-- Set the selected-operation step's `if` to
-  `github.event_name == 'schedule' || inputs.operation != 'doctor'`.
-- Set its `OPERATION` environment value to
-  `${{ github.event_name == 'schedule' && 'update' || inputs.operation }}`.
+### What this template contains
 
-A cron trigger alone is insufficient: scheduled events have no operation input.
-Enable the deployment workflow in the customer repository after enrollment opens.
+This reviewable template deploys the Jotnow web app to your Cloudflare Pages
+project and its backend to your Supabase project. It contains deployment code
+and a public signature trust root only—no application payload, private source,
+license key, database credential, or provider credential.
 
-Every run performs the recurring embedding
-backfill, including an up-to-date or pinned run. Backfill is also available
-manually. Backend-only mode never invokes Cloudflare Pages. Migration drift is
-fatal; use the manual repair guide and the explicit repair command—scheduled
-updates never rewrite migration history.
+The checked-in channel names the production release endpoint, licensed SKU,
+and production signature trust root. While enrollment is disabled, Link and
+Update refuse before contacting a provider.
 
-To add Pages hosting to a completed backend-only installation, first create
-the Pages project and configure its credentials, then select `full` for a
-manual update with a newer release available. Keep `JOTNOW_DEPLOYMENT_MODE`
-set to `full` for later updates. This requires the updated template bootstrap;
-old signed updaters refuse the transition by themselves. An incomplete update
-must be recovered in its recorded mode before changing mode. Once widened,
-full → backend-only is refused. If the backend is already on the latest
-release, this transition refuses explicitly; publishing that same release's
-web bundle separately is not yet supported.
-
-Run Doctor for read-only migration drift, compatibility epoch, deployment
-marker, schema, backfill, Edge Function, and provider diagnostics. It reads the
-expected migration inventory and epoch from the signed manifest in the installed
-immutable control directory; the template does not contain release migration
-SQL. Doctor runs from the current template after authenticating that inventory,
-so diagnostic fixes also apply when the installed signed updater is older.
-Authentication failure stops before diagnostic provider requests. Before the first authenticated install, Doctor reports that no trusted
-inventory is available and makes no provider request. Its step receives only the
-database URL, Supabase project/token, and optional `OPENAI_API_KEY` and
-`VOYAGE_API_KEY`. The Voyage probe runs only when `allow_billable_voyage` is
-explicitly selected because it can incur a small provider charge.
-
-If the first install fails, resolve its stated prerequisite and rerun Install
-against the same release. Doctor cannot diagnose a pre-install environment:
-it requires the signed inventory left by an authenticated install. Check the
-database connection, Management API access to the intended Supabase project,
-and, for full mode, the existing Pages project and its production branch.
-Do not reset the backend or edit `.jotnow` recovery state to bypass a refusal.
-
-Doctor reports problems; recovery is a separate operator action:
-
-| Diagnostic                                        | Next action                                                                                                                                                                                                                              |
-| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Interrupted update                                | Resolve the reported prerequisite and rerun Update for the recorded release and mode. Preserve the recovery state.                                                                                                                       |
-| Pending migrations without an incomplete update   | Verify the release inventory and database history before choosing a recovery. Update refuses replay of an already-installed release; it is not a general schema repair command.                                                          |
-| Remote-only migration history                     | Check the intended release and database first. Use `repair-guide`; `migration-repair` changes history only, requires exact typed confirmation, and cannot execute or undo SQL. Independently verify SQL effects before changing history. |
-| Notes eligible for backfill                       | Run Backfill. It queues eligible notes, including Trash, without resetting existing jobs. A zero gap does not establish that queued jobs completed.                                                                                      |
-| Missing marker, epoch mismatch, or damaged schema | Investigate the installed release and database. Doctor does not rewrite these objects; do not change migration history merely to clear the diagnostic.                                                                                   |
-| Function or provider check fails                  | Restore the intended deployment, credential, or dependency, then rerun Doctor. ACTIVE metadata does not prove function invocation or runtime provider configuration works.                                                               |
-
-The database URL and Supabase project ref must identify the same intended
-project; Doctor cannot verify their provenance. Its schema checks are structural:
-a green result does not verify SQL function bodies, RLS policies, or all indexes.
-Keep inspecting individual checks when other checks are unavailable. Optional
-unconfigured providers still prevent the all-healthy exit status.
+### Tooling and credentials
 
 Dependency/tool preparation occurs before the credential-bearing operation.
 The verifier/updater/doctor are vendored Node source and fetch no npm code.
 Supabase CLI 2.111.0, pnpm 10.15.1, and Wrangler 4.110.0 are operator tooling
 installed before secrets are exposed. The frozen pnpm install disables lifecycle
 scripts. No dependency lifecycle script runs after that point.
-
-Automated backups are recommended but never used as a feature or deployment
-gate. A failed update retains its sanitized recovery checkpoint in the
-configuration branch; retry the same target. Do not select another release
-until the incomplete attempt is deliberately resolved.
 
 ## License boundary
 
