@@ -313,6 +313,10 @@ export function formatReport(report) {
     if (name === 'functions')
       for (const f of d.deployments)
         lines.push(`  ${f.slug}: ${f.state}${f.version ? ` (version ${f.version})` : ''}`);
+    if (name === 'update')
+      lines.push(
+        `  Release ${d.target.version} (sequence ${d.target.sequence}) stopped after ${d.phase}; rerun Update for this release.`,
+      );
   }
   if (report.checks.migrations.details?.remoteOnly?.length) {
     lines.push(

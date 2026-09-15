@@ -113,10 +113,10 @@ jobs:
           node vendor/scripts/byo-updater/customer-cli.mjs "${args[@]}"
 
       - name: Run the selected operation
-        if: github.event_name == 'schedule' || inputs.operation != 'doctor'
+        if: inputs.operation != 'doctor'
         shell: bash
         env:
-          OPERATION: ${{ github.event_name == 'schedule' && 'update' || inputs.operation }}
+          OPERATION: ${{ inputs.operation }}
           DEPLOYMENT_MODE: ${{ vars.JOTNOW_DEPLOYMENT_MODE }}
           MIGRATION_VERSION: ${{ inputs.migration_version }}
           MIGRATION_STATUS: ${{ inputs.migration_status }}

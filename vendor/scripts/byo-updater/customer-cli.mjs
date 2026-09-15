@@ -78,6 +78,27 @@ function licenseRecovery(recoveryAction = 'link') {
   });
 }
 
+function withIncompleteUpdate(report, attempt) {
+  if (!attempt) return report;
+  const checks = {
+    ...report.checks,
+    update: {
+      status: 'unhealthy',
+      code: 'update_incomplete',
+      details: {
+        phase: attempt.phase,
+        target: {
+          version: attempt.target.version,
+          sequence: attempt.target.sequence,
+        },
+      },
+    },
+  };
+  const summary = { healthy: 0, unhealthy: 0, unavailable: 0, not_configured: 0 };
+  for (const check of Object.values(checks)) summary[check.status]++;
+  return { ...report, status: 'unhealthy', summary, checks };
+}
+
 function exactKeys(value, keys) {
   return (
     value &&
@@ -545,13 +566,16 @@ export async function doctor(repository, stateDirectory, argv, dependencies = {}
     allowBillableVoyage,
     timeoutMs,
   });
-  const report = await (dependencies.runDoctor ?? runDoctor)(
-    {
-      migrationVersions: manifest.migrations.map((name) => name.slice(0, 14)),
-      expectedEpoch: manifest.release.clientCompatibilityEpoch,
-      timeoutMs,
-    },
-    { database, ...http },
+  const report = withIncompleteUpdate(
+    await (dependencies.runDoctor ?? runDoctor)(
+      {
+        migrationVersions: manifest.migrations.map((name) => name.slice(0, 14)),
+        expectedEpoch: manifest.release.clientCompatibilityEpoch,
+        timeoutMs,
+      },
+      { database, ...http },
+    ),
+    state.attempt,
   );
   process.stdout.write(json ? `${JSON.stringify(report, null, 2)}\n` : formatReport(report));
   return report.status === 'healthy' ? 0 : report.status === 'unhealthy' ? 1 : 2;

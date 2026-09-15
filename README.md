@@ -1,38 +1,27 @@
 # jotnow self-host deployment template
 
-**Production enrollment is not available.** This repository is a preview of
-the deployment tooling. Do not add credentials or run deployment workflows yet.
-Jotnow Self-host purchases remain unavailable; see
-https://jotnow.dev/self-host/setup for release status.
+This reviewable template deploys the jotnow web app to your Cloudflare Pages
+project and its backend to your Supabase project. It contains deployment code
+and a public signature trust root only—no application payload, private source,
+license key, database credential, or provider credential.
 
-The checked-in production channel is disabled. Its endpoint and storage origin
-are deliberately non-routable, its SKU IDs are unset, and its production trust
-file is not provisioned. Link and Update refuse enrollment. Changing only
-`enabled` does not make this a usable release. The TEST signing key and TEST
-release endpoint must never be substituted for production configuration.
+The checked-in channel names the production release endpoint, licensed SKU,
+and production signature trust root. Enrollment remains disabled: Link and
+Update refuse before contacting a provider. This template is launch preparation
+and is not yet an installable offer. The deployment workflow has no schedule
+while enrollment is disabled.
 
-This repository contains deployment tooling and its MIT license. It contains
-no application bundle, license key, database credential, provider credential,
-or production signature trust root. Before production enrollment can open,
-the operator must publish a reviewed production SKU, endpoint, storage origin,
-distinct public trust root and authenticated initial release.
-
-Scheduled deployment runs are omitted while enrollment is disabled. The
-instructions below describe the intended deployment flow after release; they
-are not an invitation to configure an installation today.
-
-## Deployment after release
-
-Set repository secrets for `JOTNOW_LICENSE_KEY`, `JOTNOW_DATABASE_URL`,
-`SUPABASE_ACCESS_TOKEN`, `CLOUDFLARE_API_TOKEN`, and
-`CLOUDFLARE_ACCOUNT_ID`. Set repository variables for the project ref,
-Pages project/branch, and deployment mode. The database URL is
+Set repository secrets for `JOTNOW_LICENSE_KEY`, `JOTNOW_DATABASE_URL`, and
+`SUPABASE_ACCESS_TOKEN`. Set repository variables for the project ref and
+deployment mode. For `full` mode, also set `CLOUDFLARE_API_TOKEN` and
+`CLOUDFLARE_ACCOUNT_ID` secrets plus Pages project/branch variables;
+`backend-only` mode does not need those Cloudflare credentials. The database URL is
 used by `psql` and `supabase db push`; `SUPABASE_ACCESS_TOKEN` is a separate,
 account-wide Management API credential used to deploy functions and is the
 broadest credential in the workflow. Jotnow never receives these values.
 
-Set `JOTNOW_DEPLOYMENT_MODE` to `full` or `backend-only`; scheduled updates use
-that value. If it is unset, scheduled updates use `full`.
+Set `JOTNOW_DEPLOYMENT_MODE` to `full` or `backend-only`; updates use
+that value. If it is unset, updates use `full`.
 
 Before the first `full` deployment, create a **Direct Upload Cloudflare Pages
 project** in the account named by `CLOUDFLARE_ACCOUNT_ID`. Its name must exactly
@@ -81,7 +70,20 @@ instance validates, or when same-key and same-SKU validation proves there are no
 active slots. A different license key is refused before any provider request. Link and Unlink
 therefore resume from a fresh checkout using the configuration branch.
 
-Deploy runs are scheduled or manual. Every run performs the recurring embedding
+While enrollment is disabled, deploy runs are manual and this scaffold has no
+weekly schedule. When enrollment opens, restore all three workflow settings
+in `.github/workflows/jotnow-deployment.yml` together:
+
+- Under `on`, add `schedule: [{ cron: '17 4 * * 1' }]` (Mondays, 04:17 UTC).
+- Set the selected-operation step's `if` to
+  `github.event_name == 'schedule' || inputs.operation != 'doctor'`.
+- Set its `OPERATION` environment value to
+  `${{ github.event_name == 'schedule' && 'update' || inputs.operation }}`.
+
+A cron trigger alone is insufficient: scheduled events have no operation input.
+Enable the deployment workflow in the customer repository after enrollment opens.
+
+Every run performs the recurring embedding
 backfill, including an up-to-date or pinned run. Backfill is also available
 manually. Backend-only mode never invokes Cloudflare Pages. Migration drift is
 fatal; use the manual repair guide and the explicit repair command—scheduled
@@ -113,6 +115,23 @@ it requires the signed inventory left by an authenticated install. Check the
 database connection, Management API access to the intended Supabase project,
 and, for full mode, the existing Pages project and its production branch.
 Do not reset the backend or edit `.jotnow` recovery state to bypass a refusal.
+
+Doctor reports problems; recovery is a separate operator action:
+
+| Diagnostic                                        | Next action                                                                                                                                                                                                                              |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Interrupted update                                | Resolve the reported prerequisite and rerun Update for the recorded release and mode. Preserve the recovery state.                                                                                                                       |
+| Pending migrations without an incomplete update   | Verify the release inventory and database history before choosing a recovery. Update refuses replay of an already-installed release; it is not a general schema repair command.                                                          |
+| Remote-only migration history                     | Check the intended release and database first. Use `repair-guide`; `migration-repair` changes history only, requires exact typed confirmation, and cannot execute or undo SQL. Independently verify SQL effects before changing history. |
+| Notes eligible for backfill                       | Run Backfill. It queues eligible notes, including Trash, without resetting existing jobs. A zero gap does not establish that queued jobs completed.                                                                                      |
+| Missing marker, epoch mismatch, or damaged schema | Investigate the installed release and database. Doctor does not rewrite these objects; do not change migration history merely to clear the diagnostic.                                                                                   |
+| Function or provider check fails                  | Restore the intended deployment, credential, or dependency, then rerun Doctor. ACTIVE metadata does not prove function invocation or runtime provider configuration works.                                                               |
+
+The database URL and Supabase project ref must identify the same intended
+project; Doctor cannot verify their provenance. Its schema checks are structural:
+a green result does not verify SQL function bodies, RLS policies, or all indexes.
+Keep inspecting individual checks when other checks are unavailable. Optional
+unconfigured providers still prevent the all-healthy exit status.
 
 Dependency/tool preparation occurs before the credential-bearing operation.
 The verifier/updater/doctor are vendored Node source and fetch no npm code.
