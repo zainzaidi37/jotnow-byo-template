@@ -103,7 +103,9 @@ Run Doctor for read-only migration drift, compatibility epoch, deployment
 marker, schema, backfill, Edge Function, and provider diagnostics. It reads the
 expected migration inventory and epoch from the signed manifest in the installed
 immutable control directory; the template does not contain release migration
-SQL. Before the first authenticated install, Doctor reports that no trusted
+SQL. Doctor runs from the current template after authenticating that inventory,
+so diagnostic fixes also apply when the installed signed updater is older.
+Authentication failure stops before diagnostic provider requests. Before the first authenticated install, Doctor reports that no trusted
 inventory is available and makes no provider request. Its step receives only the
 database URL, Supabase project/token, and optional `OPENAI_API_KEY` and
 `VOYAGE_API_KEY`. The Voyage probe runs only when `allow_billable_voyage` is

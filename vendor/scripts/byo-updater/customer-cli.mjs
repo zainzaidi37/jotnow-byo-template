@@ -199,6 +199,9 @@ export async function selectInstalledControl(
     if (argv[0] === 'doctor') return false;
     throw error;
   }
+  // Keep read-only diagnostics current when an older signed updater is installed.
+  // Doctor independently authenticates its inventory before creating provider adapters.
+  if (argv[0] === 'doctor') return false;
   const initialRecoveryUpdate =
     argv[0] === 'update' &&
     argv.length <= 2 &&
