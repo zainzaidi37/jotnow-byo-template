@@ -1,6 +1,8 @@
 name: Jotnow deployment
 
 on:
+  schedule:
+    - cron: '17 4 * * 1'
   workflow_dispatch:
     inputs:
       operation:
@@ -102,10 +104,10 @@ jobs:
           node vendor/scripts/byo-updater/customer-cli.mjs doctor --core
 
       - name: Run the selected operation
-        if: inputs.operation != 'doctor'
+        if: github.event_name == 'schedule' || inputs.operation != 'doctor'
         shell: bash
         env:
-          OPERATION: ${{ inputs.operation }}
+          OPERATION: ${{ github.event_name == 'schedule' && 'update' || inputs.operation }}
           JOTNOW_DEPLOYMENT_MODE: ${{ vars.JOTNOW_DEPLOYMENT_MODE }}
           MIGRATION_VERSION: ${{ inputs.migration_version }}
           MIGRATION_STATUS: ${{ inputs.migration_status }}
