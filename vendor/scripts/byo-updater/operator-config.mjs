@@ -1,4 +1,5 @@
 import { isAbsolute } from 'node:path';
+import { UpdaterRefusal } from './refusal.mjs';
 
 const PROJECT_REF = /^[a-z0-9]{20}$/;
 const NAME = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
@@ -12,16 +13,20 @@ function safeExecutable(value) {
   return value;
 }
 
+// Database URLs only, which is why every refusal here names `JOTNOW_DATABASE_URL`.
+// `databaseConnection` is the sole caller and the `web` branch has none today. A
+// future web-URL caller needs its own reason rather than this one's copy.
 function safeUrl(value, { web = false } = {}) {
   let parsed;
   try {
     parsed = new URL(value);
   } catch {
-    invalid();
+    throw new UpdaterRefusal('database_url_invalid');
   }
-  if (parsed.hash || (web ? !['https:', 'http:'].includes(parsed.protocol) : false)) invalid();
+  if (parsed.hash || (web ? !['https:', 'http:'].includes(parsed.protocol) : false))
+    throw new UpdaterRefusal('database_url_invalid');
   if (web && parsed.protocol === 'http:' && !['localhost', '127.0.0.1'].includes(parsed.hostname)) {
-    invalid();
+    throw new UpdaterRefusal('database_url_invalid');
   }
   return parsed;
 }
@@ -29,17 +34,20 @@ function safeUrl(value, { web = false } = {}) {
 function decoded(value) {
   try {
     const result = decodeURIComponent(value);
-    if (!result || /[^\x20-\x7e]/.test(result)) invalid();
+    if (!result || /[^\x20-\x7e]/.test(result)) throw new UpdaterRefusal('database_url_invalid');
     return result;
   } catch {
-    invalid();
+    throw new UpdaterRefusal('database_url_invalid');
   }
 }
 
 export function databaseConnection(databaseUrl, projectRef, timeoutMs) {
+  if (databaseUrl === undefined || databaseUrl === null || databaseUrl === '') {
+    throw new UpdaterRefusal('database_url_missing');
+  }
   const url = safeUrl(databaseUrl);
   if (!['postgres:', 'postgresql:'].includes(url.protocol) || !url.username || !url.password) {
-    invalid();
+    throw new UpdaterRefusal('database_url_invalid');
   }
   if (
     url.hash ||
@@ -49,13 +57,18 @@ export function databaseConnection(databaseUrl, projectRef, timeoutMs) {
     (url.searchParams.has('sslmode') &&
       !['require', 'verify-ca', 'verify-full'].includes(url.searchParams.get('sslmode')))
   ) {
-    invalid();
+    throw new UpdaterRefusal('database_url_invalid');
   }
   const username = decoded(url.username);
-  const direct = url.hostname === `db.${projectRef}.supabase.co` && username === 'postgres';
-  const pooler =
-    url.hostname.endsWith('.pooler.supabase.com') && username === `postgres.${projectRef}`;
-  if (!direct && !pooler) invalid();
+  const directHost = url.hostname === `db.${projectRef}.supabase.co`;
+  const poolerHost = url.hostname.endsWith('.pooler.supabase.com');
+  if (!directHost && !poolerHost) throw new UpdaterRefusal('database_url_host_mismatch');
+  if (directHost && username !== 'postgres') {
+    throw new UpdaterRefusal('database_url_direct_username_invalid');
+  }
+  if (poolerHost && username !== `postgres.${projectRef}`) {
+    throw new UpdaterRefusal('database_url_pooler_username_invalid');
+  }
   const password = decoded(url.password);
   const passwordless = new URL(url);
   passwordless.password = '';
@@ -95,24 +108,43 @@ export function validateOperatorConfig(value, { mode = 'full', databaseOnly = fa
     executables,
     timeoutMs = 120_000,
   } = value;
+  if (!['full', 'backend-only'].includes(mode)) {
+    throw new UpdaterRefusal('deployment_mode_invalid');
+  }
+  if (typeof databaseOnly !== 'boolean') invalid();
+  if (!PROJECT_REF.test(projectRef)) {
+    throw new UpdaterRefusal(
+      projectRef === undefined || projectRef === null || projectRef === ''
+        ? 'project_ref_missing'
+        : 'project_ref_invalid',
+    );
+  }
+  if (mode === 'full') {
+    if (typeof pagesProject !== 'string' || !NAME.test(pagesProject)) {
+      throw new UpdaterRefusal(
+        pagesProject === undefined || pagesProject === null || pagesProject === ''
+          ? 'pages_project_missing'
+          : 'pages_project_prerequisite',
+      );
+    }
+    if (typeof pagesBranch !== 'string' || !NAME.test(pagesBranch)) {
+      throw new UpdaterRefusal('pages_branch_invalid');
+    }
+  }
+  if (!databaseOnly && (typeof managementToken !== 'string' || !managementToken)) {
+    throw new UpdaterRefusal('management_token_missing');
+  }
+  if (mode === 'full' && (typeof cloudflareToken !== 'string' || !cloudflareToken)) {
+    throw new UpdaterRefusal('cloudflare_token_missing');
+  }
+  if (mode === 'full' && !/^[a-f0-9]{32}$/.test(cloudflareAccountId)) {
+    throw new UpdaterRefusal(
+      cloudflareAccountId === undefined || cloudflareAccountId === null || cloudflareAccountId === ''
+        ? 'cloudflare_account_missing'
+        : 'cloudflare_account_invalid',
+    );
+  }
   if (
-    !['full', 'backend-only'].includes(mode) ||
-    typeof databaseOnly !== 'boolean' ||
-    !PROJECT_REF.test(projectRef)
-  )
-    invalid();
-  if (
-    mode === 'full' &&
-    (typeof pagesProject !== 'string' ||
-      !NAME.test(pagesProject) ||
-      typeof pagesBranch !== 'string' ||
-      !NAME.test(pagesBranch))
-  )
-    invalid();
-  if (
-    (!databaseOnly && (typeof managementToken !== 'string' || !managementToken)) ||
-    (mode === 'full' && (typeof cloudflareToken !== 'string' || !cloudflareToken)) ||
-    (mode === 'full' && !/^[a-f0-9]{32}$/.test(cloudflareAccountId)) ||
     typeof stateDirectory !== 'string' ||
     !isAbsolute(stateDirectory) ||
     typeof trustListPath !== 'string' ||

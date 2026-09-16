@@ -1,24 +1,31 @@
 # Jotnow self-host deployment template
 
-Deploy Jotnow to your own Supabase and Cloudflare Pages projects.
+Use Jotnow with your own Supabase project and the included `byo.jotnow.dev`
+web app, or host the web app on your own Cloudflare Pages project.
 
-> **Enrollment is not open yet.** Link, Update, and automatic updates are disabled.
+> **Enrollment is not open yet.** Setup, Link, Update, and automatic updates are disabled.
 > The setup steps below apply once enrollment opens.
 
 ## Setup at a glance
 
-1. **Create a repository** using this template.
-2. **Prepare your projects:** Supabase and, for `full` mode, Cloudflare Pages.
+1. **Create a Supabase project.** Start without AI keys or a Cloudflare account.
    [Project setup](#project-setup)
-3. **Add your GitHub secrets and variables.**
+2. **Create a repository** using this template and add the required GitHub
+   secrets and variables.
    [Repository configuration](#repository-configuration)
-4. **Configure Supabase Auth** and create your account.
+3. **Configure Supabase Auth** URLs and signup settings.
    [Authentication](#authentication)
-5. **Link your license:** open **Actions → Jotnow deployment → Run workflow**,
-   select `link`, and wait for it to finish.
-6. **Install:** run the same workflow with `update`.
-7. **Check the installation:** run `doctor` for read-only diagnostics.
-   [Doctor and recovery](#doctor-and-recovery)
+4. **Set up Jotnow:** open **Actions → Jotnow deployment → Run workflow**,
+   select `setup`, and wait for it to finish. Setup links your license when
+   needed, installs the backend, and runs core diagnostics.
+5. **Create your confirmed account in Supabase Auth, then open the app.**
+   On `byo.jotnow.dev`, enter your receipt's license key at
+   the host's access page first. Then enter your Supabase project URL and public
+   connection key, sign in and save a note. Open a second browser session to
+   check sync. Never put your license or deployment secrets in a URL.
+
+OpenAI and Voyage credentials are optional. Add them later using
+[Enable AI](#optional-enable-ai).
 
 Run `update` again for later releases. If a run fails, follow
 [the recovery guidance](#recovering-a-failed-run).
@@ -29,8 +36,12 @@ Run `update` again for later releases. If a run fails, follow
 
 Choose your deployment mode:
 
-- **`full`** (default): web app on Cloudflare Pages, backend on Supabase.
-- **`backend-only`**: Supabase backend only; no Cloudflare credentials needed.
+- **`backend-only`** (new-install default): use `byo.jotnow.dev` with your own
+  Supabase backend. No Cloudflare credentials needed.
+- **`full`**: web app on your Cloudflare Pages project, backend on Supabase.
+
+Existing installations retain their recorded deployment mode when no mode is
+specified. Keep an existing explicit mode setting for subsequent updates.
 
 For `full`, create a **Direct Upload Cloudflare Pages project** before installing:
 
@@ -47,22 +58,22 @@ Open **Settings → Secrets and variables → Actions** in your repository.
 
 **Secrets**
 
-| Name | Value | Required for |
-| --- | --- | --- |
-| `JOTNOW_LICENSE_KEY` | Your license key | Both modes |
-| `JOTNOW_DATABASE_URL` | Supabase Postgres connection URL | Both modes |
-| `SUPABASE_ACCESS_TOKEN` | Supabase Management API token | Both modes |
-| `CLOUDFLARE_API_TOKEN` | Token with Pages edit access | `full` |
-| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account ID | `full` |
+| Name                    | Value                            | Required for |
+| ----------------------- | -------------------------------- | ------------ |
+| `JOTNOW_LICENSE_KEY`    | Your license key                 | Both modes   |
+| `JOTNOW_DATABASE_URL`   | Supabase Postgres connection URL | Both modes   |
+| `SUPABASE_ACCESS_TOKEN` | Supabase Management API token    | Both modes   |
+| `CLOUDFLARE_API_TOKEN`  | Token with Pages edit access     | `full`       |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account ID            | `full`       |
 
 **Variables**
 
-| Name | Value |
-| --- | --- |
-| `JOTNOW_SUPABASE_PROJECT_REF` | Your Supabase project ref |
-| `JOTNOW_DEPLOYMENT_MODE` | `full` or `backend-only`; defaults to `full` |
-| `JOTNOW_PAGES_PROJECT` | Existing Pages project name; `full` only |
-| `JOTNOW_PAGES_BRANCH` | Pages production branch; defaults to `main` |
+| Name                          | Value                                                                      |
+| ----------------------------- | -------------------------------------------------------------------------- |
+| `JOTNOW_SUPABASE_PROJECT_REF` | Your Supabase project ref                                                  |
+| `JOTNOW_DEPLOYMENT_MODE`      | Optional: `full` or `backend-only`; new installs default to `backend-only` |
+| `JOTNOW_PAGES_PROJECT`        | Existing Pages project name; `full` only                                   |
+| `JOTNOW_PAGES_BRANCH`         | Pages production branch; defaults to `main`                                |
 
 The database URL is used for migrations. `SUPABASE_ACCESS_TOKEN` deploys
 functions and has **account-wide access**. Both must target your intended
@@ -72,9 +83,10 @@ project. Jotnow never receives these credentials.
 
 In **Supabase Dashboard → Authentication → URL Configuration**, set:
 
-- **Site URL:** your app's HTTPS origin, such as `https://your-project.pages.dev`.
-- **Redirect URL:** that origin plus `/app`, such as
-  `https://your-project.pages.dev/app`.
+- **Site URL:** `https://byo.jotnow.dev` for the included web app.
+- **Redirect URL:** `https://byo.jotnow.dev/app`.
+
+For own hosting, use your Pages origin and that origin plus `/app` instead.
 
 The updater does not change Auth settings. `JOTNOW_SITE_URL` and
 `JOTNOW_AUTH_CALLBACK_URL` are no longer required and do not configure Supabase.
@@ -86,6 +98,33 @@ For the default setup:
 - Configure GitHub login separately if wanted.
 
 Password recovery is managed in your own project. Email-based recovery requires SMTP.
+
+### Optional: enable AI
+
+You can take notes, search their text and sync without provider credentials.
+When you want AI features, add these secrets in your **Supabase Dashboard →
+Edge Functions → Secrets**:
+
+- `OPENAI_API_KEY`: answers, note summaries and Tidy planning.
+- `VOYAGE_API_KEY`: embeddings for semantic retrieval.
+
+Both are needed for the current note-indexing pipeline. The providers bill your
+accounts. Keep these keys in Supabase; do not duplicate them in GitHub or enter
+them in the app. The browser's session-only Recall key is a separate feature.
+
+Missing AI configuration does not invalidate a working notes installation.
+Presence of a key is not proof that it is valid or that its provider is healthy.
+Saved Recall history remains available to browse.
+
+Open **Settings → Account → Enable AI** in Jotnow and use **Recheck** after
+adding keys. This reads configuration status from your authenticated backend;
+it never returns key values. When both keys are present, pending AI work can
+resume. If a configured provider rejects requests or is unavailable, check its
+account and your Edge Function logs.
+
+Supabase's [secret management guide](https://supabase.com/docs/guides/functions/secrets)
+links directly to the Dashboard's **Functions → Secrets** page and confirms
+that changing secrets does not require redeploying functions.
 
 ## Updates and maintenance
 
@@ -125,13 +164,24 @@ Adding cron alone is insufficient: scheduled events have no operation input.
 `doctor` checks migrations, schema compatibility, the self-host marker, backfill,
 functions, and providers. **It diagnoses problems; it does not repair them.**
 
+Setup uses the core diagnostic result: schema and function deployment checks
+must pass, while optional AI diagnostics do not block installation. This does
+not prove your login, end-to-end sync, or provider health; finish the app steps
+above. Standalone Doctor retains the detailed results for all requested checks.
+
 Doctor needs authenticated release inventory from an install attempt. If inventory
 is missing or cannot be authenticated, it makes no diagnostic provider requests.
 It runs from the current template so fixes also apply to older installed releases.
 
-Its workflow step receives the database URL, Supabase project/token, and optional
-`OPENAI_API_KEY` and `VOYAGE_API_KEY` secrets. The Voyage check can incur a small
-charge and runs only with `allow_billable_voyage` selected.
+The customer workflow needs only database and Supabase project credentials.
+It does not receive provider keys. The normal AI setup path uses the **Enable
+AI** section of Jotnow Settings to check configuration stored in Supabase.
+
+The standalone Doctor CLI still supports **locally supplied probe
+credentials** for explicit operator diagnostics. These do not read your
+Supabase secrets. An absent local probe key does not mean your backend's key is
+missing. Its optional Voyage probe can incur a small charge and requires
+`--allow-billable-voyage`. No such probe is part of normal setup.
 
 ### Recovering a failed run
 
@@ -140,14 +190,14 @@ API access, and (for `full`) the Pages project and branch. Fix the reported caus
 and rerun `update` for the same release. Doctor cannot check a pre-install
 environment without authenticated inventory.
 
-| Finding | Next step |
-| --- | --- |
-| Interrupted update | Fix the cause; rerun `update` for the recorded release and mode. Preserve recovery state. |
-| Pending migrations without an interrupted update | Check release inventory and database history. Update cannot replay an installed release as a schema repair. |
-| Remote-only migration history | Check the project and release, then run `repair-guide`. See the repair limits below. |
-| Notes eligible for backfill | Run `backfill`. It queues eligible notes, including Trash, without resetting jobs. |
-| Missing marker, incompatible schema version, or damaged schema | Investigate the release and database. Do not change migration history just to clear a diagnostic. |
-| Function or provider failure | Restore the deployment, credential, or dependency; rerun Doctor. |
+| Finding                                                        | Next step                                                                                                   |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Interrupted update                                             | Fix the cause; rerun `update` for the recorded release and mode. Preserve recovery state.                   |
+| Pending migrations without an interrupted update               | Check release inventory and database history. Update cannot replay an installed release as a schema repair. |
+| Remote-only migration history                                  | Check the project and release, then run `repair-guide`. See the repair limits below.                        |
+| Notes eligible for backfill                                    | Run `backfill`. It queues eligible notes, including Trash, without resetting jobs.                          |
+| Missing marker, incompatible schema version, or damaged schema | Investigate the release and database. Do not change migration history just to clear a diagnostic.           |
+| Function or provider failure                                   | Restore the deployment, credential, or dependency; rerun Doctor.                                            |
 
 **Repair limits:** `migration-repair` changes bookkeeping only, requires exact typed
 confirmation, and cannot execute or undo SQL. Verify SQL effects independently.

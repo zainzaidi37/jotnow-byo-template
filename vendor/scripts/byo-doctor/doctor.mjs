@@ -102,7 +102,7 @@ function provider(value) {
  * All outputs are projected into known fields; exception messages are never retained.
  */
 export async function runDoctor(
-  { migrationDirectory, migrationVersions, expectedEpoch, timeoutMs = 5000 } = {},
+  { migrationDirectory, migrationVersions, expectedEpoch, timeoutMs = 5000, coreOnly = false } = {},
   adapters = {},
 ) {
   const hasDirectory = typeof migrationDirectory === 'string' && migrationDirectory.length > 0;
@@ -111,6 +111,7 @@ export async function runDoctor(
     hasDirectory === hasInventory ||
     !Number.isSafeInteger(expectedEpoch) ||
     expectedEpoch < 1 ||
+    typeof coreOnly !== 'boolean' ||
     !Number.isInteger(timeoutMs) ||
     timeoutMs < 1 ||
     timeoutMs > 60000
@@ -267,8 +268,12 @@ export async function runDoctor(
         },
         timeoutMs,
       ),
-    openai: () => check(adapters.openai, provider, timeoutMs),
-    voyage: () => check(adapters.voyage, provider, timeoutMs),
+    // Core-only diagnostics withhold the optional provider probes outright: the
+    // Voyage probe is billable, so the flag must suppress the call itself rather
+    // than trust the caller to omit the adapters. A withheld probe reports
+    // exactly what an unsupplied adapter reports.
+    openai: () => check(coreOnly ? undefined : adapters.openai, provider, timeoutMs),
+    voyage: () => check(coreOnly ? undefined : adapters.voyage, provider, timeoutMs),
   };
   // Sequential database sessions keep load and connection use small. Independent
   // checks still run after errors; each has its own transaction and deadline.
@@ -276,18 +281,70 @@ export async function runDoctor(
   for (const [name, task] of Object.entries(tasks)) checks[name] = await task();
   const summary = { healthy: 0, unhealthy: 0, unavailable: 0, not_configured: 0 };
   for (const c of Object.values(checks)) summary[c.status]++;
-  const status = summary.unhealthy
+  const coreNames = [
+    'localMigrations',
+    'migrations',
+    'epoch',
+    'marker',
+    'extensions',
+    'schema',
+    'functions',
+  ];
+  const coreSummary = { healthy: 0, unhealthy: 0, unavailable: 0, not_configured: 0 };
+  for (const name of coreNames) coreSummary[checks[name].status]++;
+  const coreStatus = coreSummary.unhealthy
+    ? 'unhealthy'
+    : coreSummary.unavailable
+      ? 'unavailable'
+      : coreSummary.not_configured
+        ? 'not_configured'
+        : 'healthy';
+  const overallStatus = summary.unhealthy
     ? 'unhealthy'
     : summary.unavailable
       ? 'unavailable'
       : summary.not_configured
         ? 'not_configured'
         : 'healthy';
-  return { schemaVersion: 1, status, summary, checks };
+  const providers = {
+    openai: checks.openai.status !== 'not_configured',
+    voyage: checks.voyage.status !== 'not_configured',
+  };
+  const configuredCount = Number(providers.openai) + Number(providers.voyage);
+  const aiConfiguration =
+    configuredCount === 0 ? 'not_configured' : configuredCount === 1 ? 'partial' : 'configured';
+  const providerChecks = [checks.openai, checks.voyage].filter(
+    (providerCheck) => providerCheck.status !== 'not_configured',
+  );
+  const aiHealth =
+    aiConfiguration === 'not_configured'
+      ? 'not_configured'
+      : providerChecks.some((providerCheck) => providerCheck.status === 'unhealthy')
+        ? 'unhealthy'
+        : providerChecks.some((providerCheck) => providerCheck.status === 'unavailable')
+          ? 'unavailable'
+          : 'healthy';
+  return {
+    schemaVersion: 1,
+    status: coreOnly ? coreStatus : overallStatus,
+    // The summary must count the same checks the status beside it was computed
+    // from; `readiness` still reports core readiness and the AI probe separately.
+    summary: coreOnly ? coreSummary : summary,
+    readiness: {
+      core: coreStatus,
+      localAiProbe: { credentials: aiConfiguration, health: aiHealth, providers },
+    },
+    checks,
+  };
 }
 
 export function formatReport(report) {
   const lines = [`Jotnow doctor: ${report.status}`, 'Read-only diagnostics; no changes made.'];
+  if (report.readiness?.localAiProbe) {
+    lines.push(
+      `Locally supplied AI probe credentials: ${report.readiness.localAiProbe.credentials}; provider health: ${report.readiness.localAiProbe.health}`,
+    );
+  }
   for (const [name, c] of Object.entries(report.checks)) {
     lines.push(`${name}: ${c.status} (${c.code})`);
     const d = c.details;

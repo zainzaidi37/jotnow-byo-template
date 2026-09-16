@@ -6,9 +6,10 @@ on:
       operation:
         description: Operation
         required: true
-        default: update
+        default: setup
         type: choice
         options:
+          - setup
           - update
           - backend-only
           - link
@@ -21,11 +22,6 @@ on:
         description: Exact provider instance UUID for recovery adoption after an unresolved link
         required: false
         type: string
-      allow_billable_voyage:
-        description: Allow doctor's tiny billable Voyage credential probe
-        required: false
-        default: false
-        type: boolean
       migration_version:
         description: Exact migration version for explicit bookkeeping repair
         required: false
@@ -97,27 +93,20 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && inputs.operation == 'doctor'
         shell: bash
         env:
-          ALLOW_BILLABLE_VOYAGE: ${{ inputs.allow_billable_voyage }}
           JOTNOW_DATABASE_URL: ${{ secrets.JOTNOW_DATABASE_URL }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           JOTNOW_SUPABASE_PROJECT_REF: ${{ vars.JOTNOW_SUPABASE_PROJECT_REF }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
           JOTNOW_DOCTOR_TIMEOUT_MS: '15000'
         run: |
           set -euo pipefail
-          args=(doctor)
-          if [[ "$ALLOW_BILLABLE_VOYAGE" == 'true' ]]; then
-            args+=(--allow-billable-voyage)
-          fi
-          node vendor/scripts/byo-updater/customer-cli.mjs "${args[@]}"
+          node vendor/scripts/byo-updater/customer-cli.mjs doctor --core
 
       - name: Run the selected operation
         if: inputs.operation != 'doctor'
         shell: bash
         env:
           OPERATION: ${{ inputs.operation }}
-          DEPLOYMENT_MODE: ${{ vars.JOTNOW_DEPLOYMENT_MODE }}
+          JOTNOW_DEPLOYMENT_MODE: ${{ vars.JOTNOW_DEPLOYMENT_MODE }}
           MIGRATION_VERSION: ${{ inputs.migration_version }}
           MIGRATION_STATUS: ${{ inputs.migration_status }}
           REPAIR_CONFIRMATION: ${{ inputs.repair_confirmation }}
@@ -148,12 +137,11 @@ jobs:
           cleanup() { git config --local --unset-all http.https://github.com/.extraheader || true; }
           trap cleanup EXIT
           case "$OPERATION" in
+            setup)
+              node vendor/scripts/byo-updater/customer-cli.mjs setup
+              ;;
             update)
-              case "${DEPLOYMENT_MODE:-full}" in
-                full|backend-only) ;;
-                *) echo 'JOTNOW_DEPLOYMENT_MODE must be full or backend-only' >&2; exit 2 ;;
-              esac
-              node vendor/scripts/byo-updater/customer-cli.mjs update "${DEPLOYMENT_MODE:-full}"
+              node vendor/scripts/byo-updater/customer-cli.mjs update
               ;;
             backend-only) node vendor/scripts/byo-updater/customer-cli.mjs update backend-only ;;
             link)

@@ -8,9 +8,10 @@
     "wrangler": "4.110.0"
   },
   "scripts": {
+    "setup": "node vendor/scripts/byo-updater/customer-cli.mjs setup",
     "link": "node vendor/scripts/byo-updater/customer-cli.mjs link",
     "unlink": "node vendor/scripts/byo-updater/customer-cli.mjs unlink",
-    "update": "node vendor/scripts/byo-updater/customer-cli.mjs update full",
+    "update": "node vendor/scripts/byo-updater/customer-cli.mjs update",
     "update:backend": "node vendor/scripts/byo-updater/customer-cli.mjs update backend-only",
     "backfill": "node vendor/scripts/byo-updater/customer-cli.mjs backfill",
     "doctor": "node vendor/scripts/byo-updater/customer-cli.mjs doctor"

@@ -33,7 +33,13 @@ const CLI_MIGRATION_SQLSTATES = new Set([
 ]);
 const GENERIC_FAILURE = 'BYO updater failed. Run doctor and review the operator guide.\n';
 
-export function formatCliFailure(error) {
+export function formatCliFailure(error, command) {
+  const guidance =
+    command === 'doctor'
+      ? 'Review the operator guide.'
+      : 'Run doctor and review the operator guide.';
+  const genericFailure =
+    command === 'doctor' ? `BYO updater failed. ${guidance}\n` : GENERIC_FAILURE;
   try {
     if (error?.code === 'license_recovery_required') {
       if (error.recoveryAction === 'unlink') {
@@ -41,14 +47,14 @@ export function formatCliFailure(error) {
       }
       return 'License lifecycle recovery is required. Supply the exact provider instance UUID with the Link recovery input; no new activation was attempted.\n';
     }
-    const refusal = updaterRefusalMessage(error);
+    const refusal = updaterRefusalMessage(error, command);
     if (refusal) return `${refusal}\n`;
     if (
       error?.code !== 'updater_operation_failed' ||
       typeof error.operation !== 'string' ||
       !Object.hasOwn(CLI_OPERATIONS, error.operation)
     ) {
-      return GENERIC_FAILURE;
+      return genericFailure;
     }
     const operation = CLI_OPERATIONS[error.operation];
     const sqlstate =
@@ -57,9 +63,9 @@ export function formatCliFailure(error) {
       CLI_MIGRATION_SQLSTATES.has(error.sqlstate)
         ? ` (SQLSTATE ${error.sqlstate})`
         : '';
-    return `BYO updater ${operation} failed${sqlstate}. Run doctor and review the operator guide.\n`;
+    return `BYO updater ${operation} failed${sqlstate}. ${guidance}\n`;
   } catch {
-    return GENERIC_FAILURE;
+    return genericFailure;
   }
 }
 
