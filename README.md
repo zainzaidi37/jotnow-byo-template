@@ -3,8 +3,9 @@
 Use Jotnow with your own Supabase project and the included `byo.jotnow.dev`
 web app, or host the web app on your own Cloudflare Pages project.
 
-> **Enrollment is not open yet.** Setup, Link, Update, and automatic updates are disabled.
-> The setup steps below apply once enrollment opens.
+> **Not yet on sale.** Setup, Link and Update work with a valid license key,
+> but the self-host purchase has not opened, so keys are not generally
+> available yet.
 
 ## Setup at a glance
 
@@ -146,18 +147,15 @@ that changing secrets does not require redeploying functions.
 Keep that mode for future updates. Switching back to `backend-only` is unsupported,
 as is adding Pages from the same already-installed release.
 
-### Automatic updates — when enrollment opens
+### Automatic updates
 
-Restore all three settings in `.github/workflows/jotnow-deployment.yml`:
+The deployment workflow runs `update` every Monday at 04:17 UTC, in whatever
+mode your installation recorded. A scheduled event carries no operation input,
+so the workflow selects `update` for it explicitly and skips the
+dispatch-only `doctor` step.
 
-1. Under `on`, add `schedule: [{ cron: '17 4 * * 1' }]` (Mondays, 04:17 UTC).
-2. Set the selected-operation step's `if` to
-   `github.event_name == 'schedule' || inputs.operation != 'doctor'`.
-3. Set its `OPERATION` value to
-   `${{ github.event_name == 'schedule' && 'update' || inputs.operation }}`.
-
-Then enable the deployment workflow in the customer repository.
-Adding cron alone is insufficient: scheduled events have no operation input.
+Enable the **Jotnow deployment** workflow in your repository for the schedule to
+run. Disable it if you would rather run every update by hand.
 
 ## Doctor and recovery
 
