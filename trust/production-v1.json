@@ -1,10 +1,1 @@
-{
-  "algorithm": "minisign-ed25519-blake2b512",
-  "keys": [
-    {
-      "id": "byo-release-2026-09",
-      "publicKey": "RWQzpfmsnOnUUKb3s61LxpdwdCn6YNQLbFazye3crEynm8ZJR4Zlz/5f"
-    }
-  ],
-  "schemaVersion": 1
-}
+{"algorithm":"minisign-ed25519-blake2b512","keys":[{"id":"byo-release-2026-09","publicKey":"RWQzpfmsnOnUUKb3s61LxpdwdCn6YNQLbFazye3crEynm8ZJR4Zlz/5f"}],"schemaVersion":1}
