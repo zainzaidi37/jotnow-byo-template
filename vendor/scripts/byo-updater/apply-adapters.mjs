@@ -227,7 +227,50 @@ export function createUpdaterAdapters(config, dependencies = {}) {
       return createDatabaseApply({ config, readDatabase, runProcess });
     })();
 
+  async function readSupabaseFunctions() {
+    const functions = await fetchWithTimeout(
+      fetchImpl,
+      `https://api.supabase.com/v1/projects/${config.projectRef}/functions`,
+      { headers: { Authorization: `Bearer ${config.managementToken}` } },
+      config.timeoutMs,
+      'supabase_management_access',
+    );
+    if (!Array.isArray(functions)) throw new UpdaterRefusal('supabase_management_access');
+    return functions;
+  }
+
+  async function readPagesProject() {
+    if (config.mode !== 'full') return;
+    const pages = await fetchWithTimeout(
+      fetchImpl,
+      `https://api.cloudflare.com/client/v4/accounts/${config.cloudflareAccountId}/pages/projects/${config.pagesProject}`,
+      { headers: { Authorization: `Bearer ${config.cloudflareToken}` } },
+      config.timeoutMs,
+      'pages_project_prerequisite',
+    );
+    if (
+      pages?.success !== true ||
+      pages?.result?.name !== config.pagesProject ||
+      pages?.result?.production_branch !== config.pagesBranch
+    ) {
+      throw new UpdaterRefusal('pages_project_prerequisite');
+    }
+  }
+
   return Object.freeze({
+    async preflightTarget({ mode }) {
+      if (mode !== config.mode) throw new UpdaterRefusal('mode_mismatch');
+      try {
+        await database.read('migrations');
+      } catch (error) {
+        if (!hasErrorCode(error, 'missing_prerequisite')) {
+          throw new UpdaterRefusal('database_history_unavailable');
+        }
+      }
+      await readSupabaseFunctions();
+      await readPagesProject();
+    },
+
     async preflight({ manifest, mode }) {
       if (mode !== config.mode) throw new UpdaterRefusal('mode_mismatch');
       const applied = await readMigrationHistory(database);
@@ -247,30 +290,8 @@ export function createUpdaterAdapters(config, dependencies = {}) {
           throw new UpdaterRefusal('database_history_unavailable');
         }
       }
-      const functions = await fetchWithTimeout(
-        fetchImpl,
-        `https://api.supabase.com/v1/projects/${config.projectRef}/functions`,
-        { headers: { Authorization: `Bearer ${config.managementToken}` } },
-        config.timeoutMs,
-        'supabase_management_access',
-      );
-      if (!Array.isArray(functions)) throw new UpdaterRefusal('supabase_management_access');
-      if (mode === 'full') {
-        const pages = await fetchWithTimeout(
-          fetchImpl,
-          `https://api.cloudflare.com/client/v4/accounts/${config.cloudflareAccountId}/pages/projects/${config.pagesProject}`,
-          { headers: { Authorization: `Bearer ${config.cloudflareToken}` } },
-          config.timeoutMs,
-          'pages_project_prerequisite',
-        );
-        if (
-          pages?.success !== true ||
-          pages?.result?.name !== config.pagesProject ||
-          pages?.result?.production_branch !== config.pagesBranch
-        ) {
-          throw new UpdaterRefusal('pages_project_prerequisite');
-        }
-      }
+      await readSupabaseFunctions();
+      await readPagesProject();
       return {
         databaseEpoch,
         emptyBackend,

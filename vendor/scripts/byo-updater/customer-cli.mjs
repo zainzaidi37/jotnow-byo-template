@@ -78,6 +78,28 @@ function licenseRecovery(recoveryAction = 'link') {
   });
 }
 
+/**
+ * Every caller passes `process.env.JOTNOW_LICENSE_KEY`, so the value is a
+ * string or absent — the first branch covers absent, and there is no third
+ * case worth a `typeof` test.
+ *
+ * The shape check stays on all four commands, including the two that only
+ * re-assert an existing intent. It cannot strand a deployment: the same 8-512
+ * bound is enforced a layer down by `licenseFingerprint`, so a key this
+ * refuses could never have been linked in the first place. Refusing here is
+ * how that operator gets the refusal table's copy instead of the lifecycle's
+ * bare `license key is invalid`.
+ */
+function commandLicenseKey(value) {
+  if (value === undefined || value === null || value === '') {
+    throw new UpdaterRefusal('license_key_missing');
+  }
+  if (value.length < 8 || value.length > 512) {
+    throw new UpdaterRefusal('license_key_invalid');
+  }
+  return value;
+}
+
 function withIncompleteUpdate(report, attempt) {
   if (!attempt) return report;
   const checks = {
@@ -96,7 +118,13 @@ function withIncompleteUpdate(report, attempt) {
   };
   const summary = { healthy: 0, unhealthy: 0, unavailable: 0, not_configured: 0 };
   for (const check of Object.values(checks)) summary[check.status]++;
-  return { ...report, status: 'unhealthy', summary, checks };
+  return {
+    ...report,
+    status: 'unhealthy',
+    summary,
+    ...(report.readiness ? { readiness: { ...report.readiness, core: 'unhealthy' } } : {}),
+    checks,
+  };
 }
 
 function exactKeys(value, keys) {
@@ -130,7 +158,7 @@ async function channelConfig(repository) {
   ) {
     throw fixed();
   }
-  if (!value.enabled) throw fixed(`${value.channel} release enrollment is disabled`);
+  if (!value.enabled) throw new UpdaterRefusal('enrollment_disabled');
   const endpoint = new URL(value.releaseEndpoint);
   const r2 = new URL(value.r2Origin);
   if (
@@ -154,7 +182,7 @@ function git(repository, args) {
       { env: { PATH: process.env.PATH, LANG: 'C' } },
       (error, stdout) =>
         error
-          ? reject(fixed('unable to read configuration branch'))
+          ? reject(new UpdaterRefusal('repository_inspection_failed'))
           : accept(String(stdout).trim()),
     );
   });
@@ -192,6 +220,10 @@ export async function selectInstalledControl(
   if (process.env.JOTNOW_AUTHENTICATED_CONTROL === '1') return false;
   const state = await new FileStateStore(stateDirectory).read();
   if (!state?.updaterControl) return false;
+  const effectiveArgv =
+    argv[0] === 'update' && argv.length === 1
+      ? ['update', process.env.JOTNOW_DEPLOYMENT_MODE || state.mode]
+      : argv;
   let authenticated;
   try {
     authenticated = await authenticate({ stateDirectory, state });
@@ -201,28 +233,30 @@ export async function selectInstalledControl(
   }
   // Keep read-only diagnostics current when an older signed updater is installed.
   // Doctor independently authenticates its inventory before creating provider adapters.
-  if (argv[0] === 'doctor') return false;
+  if (argv[0] === 'doctor' || argv[0] === 'setup') return false;
   const initialRecoveryUpdate =
-    argv[0] === 'update' &&
-    argv.length <= 2 &&
-    (argv.length === 1 || ['full', 'backend-only'].includes(argv[1])) &&
-    (argv[1] ?? 'full') === state.mode &&
+    effectiveArgv[0] === 'update' &&
+    effectiveArgv.length === 2 &&
+    ['full', 'backend-only'].includes(effectiveArgv[1]) &&
+    effectiveArgv[1] === state.mode &&
     state.installedRelease === null &&
     state.attempt?.phase === 'control_installed' &&
     state.attempt.target.sequence === 1 &&
     state.updaterControl.sequence === state.attempt.target.sequence &&
     authenticated.manifest.release.minimumPreviousRelease === null;
   const wideningUpdate =
-    argv.length === 2 &&
-    argv[0] === 'update' &&
-    argv[1] === 'full' &&
+    effectiveArgv.length === 2 &&
+    effectiveArgv[0] === 'update' &&
+    effectiveArgv[1] === 'full' &&
     state.mode === 'backend-only' &&
     state.installedRelease !== null &&
     state.attempt === null &&
     state.updaterControl.sequence === state.installedRelease.sequence;
   const explicitUpdateMode =
-    argv.length === 2 && argv[0] === 'update' && ['full', 'backend-only'].includes(argv[1])
-      ? argv[1]
+    effectiveArgv.length === 2 &&
+    effectiveArgv[0] === 'update' &&
+    ['full', 'backend-only'].includes(effectiveArgv[1])
+      ? effectiveArgv[1]
       : null;
   if (explicitUpdateMode && state.mode !== explicitUpdateMode && !wideningUpdate) {
     throw new UpdaterRefusal('mode_mismatch');
@@ -231,13 +265,13 @@ export async function selectInstalledControl(
   const entry = join(authenticated.root, 'scripts/byo-updater/customer-cli.mjs');
   const module = await import(pathToFileURL(entry).href);
   process.env.JOTNOW_AUTHENTICATED_CONTROL = '1';
-  const result = await withLegacyOperatorUrlDefaults(() => module.main(argv));
+  const result = await withLegacyOperatorUrlDefaults(() => module.main(effectiveArgv));
   return Number.isInteger(result) ? result : true;
 }
 
 async function stores(repository, stateDirectory) {
   const branch = process.env.JOTNOW_CONFIGURATION_BRANCH || process.env.GITHUB_REF_NAME;
-  if (!branch) throw fixed('configuration branch is required');
+  if (!branch) throw new UpdaterRefusal('configuration_branch_missing');
   const expectedHead = await git(repository, ['rev-parse', 'HEAD']);
   const localStore = new FileStateStore(stateDirectory);
   return {
@@ -265,16 +299,17 @@ export async function update(repository, stateDirectory, mode, dependencies = {}
   const config = readOperatorConfig(mode, stateDirectory, trustListPath);
   const durable = await createStores(repository, stateDirectory);
   const instance = await durable.instance.read();
-  if (!instance || instance.status !== 'linked') throw fixed('deployment is not linked');
-  assertIntentLicense(instance, process.env.JOTNOW_LICENSE_KEY);
+  if (!instance || instance.status !== 'linked') throw new UpdaterRefusal('deployment_not_linked');
+  const licenseKey = commandLicenseKey(process.env.JOTNOW_LICENSE_KEY);
+  assertIntentLicense(instance, licenseKey);
   if (instance.storeId !== channel.storeId || instance.productId !== channel.productId) {
-    throw fixed('linked instance does not match the configured release channel');
+    throw new UpdaterRefusal('channel_mismatch');
   }
   const state = await durable.checkpoint.read();
   const widening = isModeWidening(state, mode);
   const requestedPin = process.env.JOTNOW_RELEASE_PIN || null;
   if (state?.attempt && requestedPin && requestedPin !== state.attempt.target.version) {
-    throw fixed('the configured pin differs from the incomplete recovery target');
+    throw new UpdaterRefusal('recovery_target_mismatch');
   }
   const pin = state?.attempt?.target.version ?? requestedPin;
   const downloads = join(stateDirectory, 'downloads');
@@ -287,7 +322,7 @@ export async function update(repository, stateDirectory, mode, dependencies = {}
       expectedR2Origin: channel.r2Origin,
       request: {
         schemaVersion: 1,
-        licenseKey: process.env.JOTNOW_LICENSE_KEY,
+        licenseKey,
         instanceId: instance.instanceId,
         installed: state?.installedRelease ?? null,
         pin,
@@ -297,8 +332,7 @@ export async function update(repository, stateDirectory, mode, dependencies = {}
     });
     const adapters = createAdapters(config);
     if (selected.status === 'up-to-date') {
-      if (state?.attempt)
-        throw fixed('release service cannot satisfy the incomplete recovery target');
+      if (state?.attempt) throw new UpdaterRefusal('recovery_release_unavailable');
       if (widening) throw new UpdaterRefusal('widening_requires_release');
       const lock = await acquireLock(stateDirectory);
       try {
@@ -326,13 +360,13 @@ export async function update(repository, stateDirectory, mode, dependencies = {}
   }
 }
 
-async function link(repository, durable, channel, rest, dependencies) {
+export async function link(repository, durable, channel, rest, dependencies) {
   let adoption = null;
   if (rest.length) {
     if (rest.length !== 2 || rest[0] !== '--adopt-instance') throw fixed();
     adoption = rest[1];
   }
-  const licenseKey = process.env.JOTNOW_LICENSE_KEY;
+  const licenseKey = commandLicenseKey(process.env.JOTNOW_LICENSE_KEY);
   const instanceName = process.env.JOTNOW_INSTANCE_NAME || basename(repository);
   let lifecycle = await durable.instance.read();
   if (lifecycle) assertIntentLicense(lifecycle, licenseKey);
@@ -340,14 +374,14 @@ async function link(repository, durable, channel, rest, dependencies) {
     lifecycle?.storeId !== undefined &&
     (lifecycle.storeId !== channel.storeId || lifecycle.productId !== channel.productId)
   ) {
-    throw fixed('durable lifecycle intent does not match the configured release channel');
+    throw new UpdaterRefusal('channel_mismatch');
   }
-  if (lifecycle?.status === 'linked') throw fixed('deployment is already linked');
+  if (lifecycle?.status === 'linked') throw new UpdaterRefusal('deployment_already_linked');
   if (lifecycle?.status === 'unlinking') {
-    throw fixed('deployment unlinking must be completed before relinking');
+    throw new UpdaterRefusal('relink_requires_unlink');
   }
   if (lifecycle?.phase === 'activation_confirmed') {
-    if (adoption) throw fixed('adoption is not valid after activation was confirmed');
+    if (adoption) throw new UpdaterRefusal('adoption_after_activation');
     let ownership;
     try {
       ownership = await (dependencies.validateLicenseInstance ?? validateLicenseInstance)({
@@ -413,7 +447,7 @@ async function link(repository, durable, channel, rest, dependencies) {
     process.stdout.write('Release instance adopted, linked, and committed.\n');
     return;
   }
-  if (adoption) throw fixed('adoption requires an unresolved durable linking intent');
+  if (adoption) throw new UpdaterRefusal('adoption_requires_unresolved_link');
   lifecycle = createLinkingIntent({
     licenseKey,
     instanceName,
@@ -455,12 +489,12 @@ async function link(repository, durable, channel, rest, dependencies) {
 
 async function unlink(durable, channel, rest, dependencies) {
   if (rest.length) throw fixed();
-  const licenseKey = process.env.JOTNOW_LICENSE_KEY;
   let lifecycle = await durable.instance.read();
-  if (!lifecycle) throw fixed('deployment is not linked');
+  if (!lifecycle) throw new UpdaterRefusal('deployment_not_linked');
+  const licenseKey = commandLicenseKey(process.env.JOTNOW_LICENSE_KEY);
   assertIntentLicense(lifecycle, licenseKey);
   if (lifecycle.storeId !== channel.storeId || lifecycle.productId !== channel.productId) {
-    throw fixed('durable lifecycle intent does not match the configured release channel');
+    throw new UpdaterRefusal('channel_mismatch');
   }
   if (lifecycle.phase === 'activation_pending') {
     throw licenseRecovery();
@@ -520,13 +554,17 @@ async function unlink(durable, channel, rest, dependencies) {
 }
 
 export async function doctor(repository, stateDirectory, argv, dependencies = {}) {
+  const output = dependencies.output ?? ((value) => process.stdout.write(value));
   const json = argv.includes('--json');
+  const coreOnly = argv.includes('--core');
   const allowBillableVoyage = argv.includes('--allow-billable-voyage');
-  if (argv.some((arg) => !['--json', '--allow-billable-voyage'].includes(arg))) throw fixed();
+  if (argv.some((arg) => !['--json', '--core', '--allow-billable-voyage'].includes(arg)))
+    throw fixed();
+  if (coreOnly && allowBillableVoyage) throw fixed();
   const durable = await (dependencies.stores ?? stores)(repository, stateDirectory);
   const state = await durable.checkpoint.read();
   if (!state?.updaterControl) {
-    process.stdout.write(
+    output(
       'Jotnow doctor: unavailable\nNo authenticated installed release inventory is available; complete an authenticated install before running doctor.\nRead-only diagnostics; no changes made.\n',
     );
     return 2;
@@ -537,7 +575,7 @@ export async function doctor(repository, stateDirectory, argv, dependencies = {}
       dependencies.authenticateInstalledControl ?? authenticateInstalledControl
     )({ stateDirectory, state });
   } catch {
-    process.stdout.write(
+    output(
       'Jotnow doctor: unavailable\nThe installed release inventory could not be authenticated; no diagnostic provider request was made.\nRead-only diagnostics; no changes made.\n',
     );
     return 2;
@@ -564,9 +602,9 @@ export async function doctor(repository, stateDirectory, argv, dependencies = {}
   const http = (dependencies.createHttpAdapters ?? createHttpAdapters)({
     projectRef: process.env.JOTNOW_SUPABASE_PROJECT_REF,
     managementToken: process.env.SUPABASE_ACCESS_TOKEN,
-    openaiKey: process.env.OPENAI_API_KEY,
-    voyageKey: process.env.VOYAGE_API_KEY,
-    allowBillableVoyage,
+    openaiKey: coreOnly ? undefined : process.env.OPENAI_API_KEY,
+    voyageKey: coreOnly ? undefined : process.env.VOYAGE_API_KEY,
+    allowBillableVoyage: coreOnly ? false : allowBillableVoyage,
     timeoutMs,
   });
   const report = withIncompleteUpdate(
@@ -575,13 +613,83 @@ export async function doctor(repository, stateDirectory, argv, dependencies = {}
         migrationVersions: manifest.migrations.map((name) => name.slice(0, 14)),
         expectedEpoch: manifest.release.clientCompatibilityEpoch,
         timeoutMs,
+        coreOnly,
       },
       { database, ...http },
     ),
     state.attempt,
   );
-  process.stdout.write(json ? `${JSON.stringify(report, null, 2)}\n` : formatReport(report));
+  output(json ? `${JSON.stringify(report, null, 2)}\n` : formatReport(report));
   return report.status === 'healthy' ? 0 : report.status === 'unhealthy' ? 1 : 2;
+}
+
+export async function setup(repository, stateDirectory, dependencies = {}) {
+  const readChannel = dependencies.channelConfig ?? channelConfig;
+  const createStores = dependencies.stores ?? stores;
+  const readOperatorConfig = dependencies.operatorConfig ?? operatorConfig;
+  const runLink = dependencies.link ?? link;
+  const runUpdateCommand = dependencies.runUpdateCommand ?? main;
+  const runCustomerDoctor = dependencies.doctor ?? doctor;
+  const output = dependencies.output ?? ((value) => process.stdout.write(value));
+
+  const channel = await readChannel(repository);
+  const durable = await createStores(repository, stateDirectory);
+  const state = await durable.checkpoint.read();
+  const requestedMode = process.env.JOTNOW_DEPLOYMENT_MODE || null;
+  if (requestedMode && !['full', 'backend-only'].includes(requestedMode)) {
+    throw new UpdaterRefusal('deployment_mode_invalid');
+  }
+  const mode = requestedMode ?? state?.mode ?? 'backend-only';
+  if (state?.mode === 'full' && mode !== 'full') throw new UpdaterRefusal('mode_mismatch');
+  const licenseKey = commandLicenseKey(process.env.JOTNOW_LICENSE_KEY);
+
+  // Validate database/project binding and every mode-specific credential before
+  // the public license provider can be mutated.
+  const trustListPath = resolve(repository, channel.trustList ?? 'trust/production-v1.json');
+  const config = readOperatorConfig(mode, stateDirectory, trustListPath);
+  const adapters = (dependencies.createUpdaterAdapters ?? createUpdaterAdapters)(config);
+  await adapters.preflightTarget({ mode });
+
+  const lifecycle = await durable.instance.read();
+  if (lifecycle?.status !== 'linked') {
+    const linkResult = await runLink(repository, durable, channel, [], dependencies);
+    if (Number.isInteger(linkResult) && linkResult !== 0) return linkResult;
+  } else {
+    assertIntentLicense(lifecycle, licenseKey);
+    if (lifecycle.storeId !== channel.storeId || lifecycle.productId !== channel.productId) {
+      throw new UpdaterRefusal('channel_mismatch');
+    }
+  }
+
+  const updateResult = await runUpdateCommand(['update', mode], dependencies);
+  if (updateResult !== undefined && updateResult !== 0) {
+    throw new UpdaterRefusal('installed_updater_incomplete');
+  }
+  const diagnosticExit = await runCustomerDoctor(repository, stateDirectory, ['--core'], {
+    ...dependencies,
+    output: () => {},
+  });
+  if (diagnosticExit !== 0) {
+    throw new UpdaterRefusal('core_diagnostics_failed');
+  }
+
+  const completed = await durable.checkpoint.read();
+  if (!completed?.installedRelease || completed.attempt !== null || completed.mode !== mode) {
+    throw new UpdaterRefusal('installation_unverified');
+  }
+  const installed = completed?.installedRelease;
+  output(
+    [
+      'Jotnow setup complete.',
+      `Core installation checks passed (${mode}).`,
+      ...(installed ? [`Release: ${installed.version} (sequence ${installed.sequence})`] : []),
+      `App: ${mode === 'backend-only' ? 'https://byo.jotnow.dev' : `https://${config.pagesProject}.pages.dev`}`,
+      `Supabase project URL: https://${config.projectRef}.supabase.co`,
+      'Next: create a confirmed operator account in Supabase Auth.',
+      'Then open the app, enter the receipt license at the byo.jotnow.dev gate when using the included app, and connect with your public project URL and publishable key.',
+      'AI is optional and was not checked here. Add provider secrets in Supabase later, then use Recheck in Jotnow Settings → Account → Enable AI.',
+    ].join('\n') + '\n',
+  );
 }
 
 export async function main(argv = process.argv.slice(2), dependencies = {}) {
@@ -594,8 +702,13 @@ export async function main(argv = process.argv.slice(2), dependencies = {}) {
   );
   if (delegated !== false) return delegated === true ? undefined : delegated;
   const [command, ...rest] = argv;
+  if (command === 'setup') {
+    if (rest.length) throw fixed();
+    return setup(repository, stateDirectory, dependencies);
+  }
   if (command === 'update') {
-    const mode = rest[0] || 'full';
+    const recorded = rest.length === 0 ? await new FileStateStore(stateDirectory).read() : null;
+    const mode = rest[0] || process.env.JOTNOW_DEPLOYMENT_MODE || recorded?.mode || 'backend-only';
     if (!['full', 'backend-only'].includes(mode) || rest.length > 1) throw fixed();
     await update(repository, stateDirectory, mode, dependencies);
     return;
@@ -614,7 +727,7 @@ export async function main(argv = process.argv.slice(2), dependencies = {}) {
     return unlink(durable, channel, rest, dependencies);
   }
   throw fixed(
-    'command must be link, unlink, update, backfill, doctor, repair-guide, or migration-repair',
+    'command must be setup, link, unlink, update, backfill, doctor, repair-guide, or migration-repair',
   );
 }
 
@@ -626,7 +739,7 @@ export async function runCustomerCli(
     const result = await execute(argv);
     return Number.isInteger(result) ? result : 0;
   } catch (error) {
-    stderr.write(formatCliFailure(error));
+    stderr.write(formatCliFailure(error, argv[0]));
     return 1;
   }
 }
