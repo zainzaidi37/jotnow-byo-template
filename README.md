@@ -147,15 +147,36 @@ that changing secrets does not require redeploying functions.
 Keep that mode for future updates. Switching back to `backend-only` is unsupported,
 as is adding Pages from the same already-installed release.
 
-### Automatic updates
+### Automatic updates — off by default
 
-The deployment workflow runs `update` every Monday at 04:17 UTC, in whatever
-mode your installation recorded. A scheduled event carries no operation input,
-so the workflow selects `update` for it explicitly and skips the
-dispatch-only `doctor` step.
+Updates run when you dispatch them. To update on a schedule instead, add a
+trigger under `on` in `.github/workflows/jotnow-deployment.yml`:
 
-Enable the **Jotnow deployment** workflow in your repository for the schedule to
-run. Disable it if you would rather run every update by hand.
+```yaml
+on:
+  schedule:
+    - cron: '17 4 * * 1' # Mondays, 04:17 UTC
+  workflow_dispatch:
+```
+
+The workflow already handles the rest: a scheduled event carries no operation
+input, so it selects `update` explicitly and skips the dispatch-only `doctor`
+step. Nothing else needs changing.
+
+Before you turn it on, know what an unattended `update` does. It applies
+migrations and deploys functions against your Supabase project using your
+account-wide management token, and it runs embedding backfill, which bills your
+provider accounts. Run at least one update by hand first and read its output.
+
+Two scheduling limits are GitHub's, not ours. Scheduled runs always use your
+**default branch**, so a configuration branch that is not the default will fail
+every week. GitHub also suspends scheduled workflows after **60 days** without
+repository activity, and a repository only the cron touches is exactly that
+case — check occasionally that it is still running.
+
+Setting the `JOTNOW_DEPLOYMENT_MODE` variable overrides your recorded mode, so
+leave it unset once installed unless you intend every future run, scheduled
+ones included, to use that mode.
 
 ## Doctor and recovery
 
