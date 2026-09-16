@@ -1,8 +1,6 @@
 name: Jotnow deployment
 
 on:
-  schedule:
-    - cron: '17 4 * * 1'
   workflow_dispatch:
     inputs:
       operation:
