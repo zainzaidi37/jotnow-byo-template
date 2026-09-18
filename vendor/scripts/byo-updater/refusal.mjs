@@ -122,6 +122,11 @@ const REFUSAL_DEFINITIONS = Object.freeze({
     operator:
       'JOTNOW_DATABASE_URL must use the username postgres.<JOTNOW_SUPABASE_PROJECT_REF> with a pooler connection.',
   }),
+  database_direct_host_unreachable: Object.freeze({
+    error: 'direct database host is unreachable and no pooler endpoint resolved',
+    operator:
+      "The direct database host db.<JOTNOW_SUPABASE_PROJECT_REF>.supabase.co could not be reached, and this project's session pooler could not be resolved to retry. Supabase publishes the direct host over IPv6 only, and many CI runners are IPv4-only. Copy the session pooler URL on port 5432 from your project's Connect dialog into JOTNOW_DATABASE_URL, then run this workflow again.",
+  }),
   cloudflare_token_missing: Object.freeze({
     error: 'cloudflare token missing',
     operator:

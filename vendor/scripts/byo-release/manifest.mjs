@@ -21,6 +21,126 @@ const COMMIT = /^[a-f0-9]{40}$/;
 const VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
 const KEY_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
+/**
+ * A deployable Edge Function slug.
+ *
+ * This became security-relevant the moment `manifest.functions` stopped being
+ * a frozen constant. The slug is interpolated into a `supabase functions
+ * deploy <slug>` argv and into `supabase/functions/<slug>/index.ts` package
+ * paths, so a name out of a signed-but-hostile manifest reaching either
+ * unvalidated is an argument-injection and a traversal at once. Anchored,
+ * lowercase alphanumerics with internal single hyphens only: no leading `-`
+ * (so it can never be read as a flag), no `.`, `/`, `\`, whitespace, control
+ * characters or Unicode, and a length bound. Deliberately narrower than what
+ * Supabase would accept — the manifest boundary is the wrong place to be
+ * generous.
+ */
+export const FUNCTION_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const MAX_FUNCTION_SLUG_LENGTH = 64;
+const MAX_FUNCTIONS = 128;
+
+/**
+ * Bounds on the reserved `extensions` region below. These are authoring-time
+ * and maintainer-tooling guards; the update path verifies both signatures
+ * before validation. Its only pre-signature exposure here is the bounded
+ * `JSON.parse` that predates this region. Depth and node count bound the walk.
+ * The final `stableJson` cost is not node-bounded because strings may be long,
+ * but parsed manifest/state paths cap input bytes before parsing. The last
+ * limit measures UTF-16 code units, not encoded bytes.
+ */
+const MAX_EXTENSIONS_DEPTH = 8;
+const MAX_EXTENSIONS_NODES = 2048;
+const MAX_EXTENSIONS_CODE_UNITS = 64 * 1024;
+
+function isPlainObject(value) {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    Object.getPrototypeOf(value) === Object.prototype
+  );
+}
+
+/**
+ * The reserved must-ignore region: purely additive information that every
+ * release which accepts it carries through untouched.
+ *
+ * The permanent compatibility gate is the operator's frozen vendored copy.
+ * Before it can delegate, that copy parses durable state and authenticates the
+ * installed control manifest with its own validators; control cannot
+ * authenticate itself. Updates checkpoint only state/control and never refresh
+ * `vendor/`.
+ *
+ * **Acceptance widens; emission does not move.** Nothing we build emits
+ * `extensions` yet. Emission becomes safe only after every enrolled operator's
+ * `vendor/` contains this validator. That is a permanent floor;
+ * `minimumPreviousRelease` governs control hand-off and cannot relax it.
+ *
+ * The evolution rule: purely additive information goes in `extensions`, where
+ * every compatible validator ignores it. Anything that changes the meaning of
+ * an existing key bumps `MANIFEST_SCHEMA_VERSION` instead, because there is no
+ * way for an older validator to ignore *that* safely. `extensions` is inside
+ * the minisign signature like every other byte of manifest.json, so this is a
+ * widening of the accepted shape, never a weakening of the signature.
+ *
+ * This is an authoring-time JSON-value guard. It rejects JavaScript-only
+ * `undefined` and non-finite numbers, neither of which can come from
+ * `JSON.parse`. `verifyPackage`'s canonical-bytes check is the authority for
+ * byte identity, including accepted values such as `-0` and non-canonical
+ * numeric literals or string escapes.
+ */
+export function assertJsonSafeExtensions(value, label = 'extensions') {
+  if (!isPlainObject(value)) throw new Error(`${label} must be a plain object`);
+  let nodes = 0;
+  const walk = (node, depth, path) => {
+    if (depth > MAX_EXTENSIONS_DEPTH) throw new Error(`${label} exceeds its nesting bound`);
+    if ((nodes += 1) > MAX_EXTENSIONS_NODES) throw new Error(`${label} exceeds its size bound`);
+    if (node === null || typeof node === 'string' || typeof node === 'boolean') return;
+    if (typeof node === 'number') {
+      if (!Number.isFinite(node)) throw new Error(`${path} must be a finite number`);
+      return;
+    }
+    if (Array.isArray(node)) {
+      for (let index = 0; index < node.length; index += 1) {
+        walk(node[index], depth + 1, `${path}[${index}]`);
+      }
+      return;
+    }
+    if (!isPlainObject(node)) throw new Error(`${path} is not JSON-safe`);
+    for (const key of Object.keys(node)) {
+      // `__proto__` is an ordinary own key on a JSON.parse result and would
+      // round-trip fine, but it stops being ordinary the moment anything
+      // spreads or assigns this region. Refuse it at the boundary.
+      if (key === '__proto__') throw new Error(`${path} must not carry a __proto__ key`);
+      walk(node[key], depth + 1, `${path}.${key}`);
+    }
+  };
+  walk(value, 0, label);
+  if (stableJson(value).length > MAX_EXTENSIONS_CODE_UNITS) {
+    throw new Error(`${label} exceeds its size bound`);
+  }
+  return value;
+}
+
+/**
+ * `exactKeys`, plus a named set of optional keys that are permitted but never
+ * required. Every optional key an older release does not know about must be a
+ * must-ignore region, or this would not be safe.
+ */
+function exactKeysWithOptional(value, keys, optional, label) {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  const permitted = new Set(optional);
+  const actual = Object.keys(value)
+    .filter((key) => !permitted.has(key))
+    .sort();
+  const expected = [...keys].sort();
+  if (actual.join('\0') !== expected.join('\0')) {
+    throw new Error(`${label} keys must be exactly: ${expected.join(', ')}`);
+  }
+}
+
 export function assertPackagePath(value, label = 'path') {
   const hasControlCharacter =
     typeof value === 'string' && [...value].some((character) => {
@@ -83,11 +203,17 @@ function exactKeys(value, keys, label) {
 }
 
 export function validateManifest(manifest) {
-  exactKeys(
+  exactKeysWithOptional(
     manifest,
     ['schemaVersion', 'release', 'signature', 'components', 'migrations', 'functions', 'files'],
+    ['extensions'],
     'manifest',
   );
+  // Accepted and left exactly as found — never normalized, never stripped.
+  // A validator that dropped it would change the bytes `manifestBytes` emits
+  // and break the signature it was meant to preserve.
+  // Unlike parsed JSON, an in-process author can supply an own undefined key.
+  if (Object.hasOwn(manifest, 'extensions')) assertJsonSafeExtensions(manifest.extensions);
   if (manifest.schemaVersion !== MANIFEST_SCHEMA_VERSION) throw new Error('unsupported manifest schema');
 
   if (manifest.signature !== null) {
@@ -157,8 +283,31 @@ export function validateManifest(manifest) {
       throw new Error(`invalid migration filename: ${migration}`);
     }
   }
-  if (manifest.functions.join('\0') !== RELEASE_FUNCTIONS.join('\0')) {
-    throw new Error('functions do not match the release function contract');
+  // A required **minimum**, not an exact set: adding a BYO Edge Function is an
+  // ordinary feature, and an exact set meant the previous release's installed
+  // control refused such a release before preflight ever ran. Removing a name
+  // from `RELEASE_FUNCTIONS` is the other direction and is not additive — an
+  // older release would still try to deploy the name it knows — so a removal
+  // bumps `MANIFEST_SCHEMA_VERSION`.
+  //
+  // Not sorted, deliberately: `RELEASE_FUNCTIONS` is authored in a
+  // non-alphabetical order and all four published releases emit exactly that
+  // order, so requiring sortedness would reject every one of them.
+  if (manifest.functions.length > MAX_FUNCTIONS) throw new Error('too many functions');
+  const functions = new Set();
+  for (const name of manifest.functions) {
+    if (
+      typeof name !== 'string' ||
+      name.length > MAX_FUNCTION_SLUG_LENGTH ||
+      !FUNCTION_SLUG.test(name)
+    ) {
+      throw new Error(`invalid function slug: ${JSON.stringify(name)}`);
+    }
+    if (functions.has(name)) throw new Error(`duplicate function slug: ${name}`);
+    functions.add(name);
+  }
+  for (const name of RELEASE_FUNCTIONS) {
+    if (!functions.has(name)) throw new Error(`release is missing required function: ${name}`);
   }
 
   if (!Array.isArray(manifest.files) || manifest.files.length === 0) throw new Error('files must not be empty');
@@ -236,6 +385,10 @@ export async function verifyPackage(packageRoot, manifest) {
     .filter((entry) => entry.path.startsWith('supabase/migrations/'))
     .map((entry) => entry.path.slice('supabase/migrations/'.length));
   if (migrationFiles.join('\0') !== manifest.migrations.join('\0')) throw new Error('migration inventory does not match files');
+  // Load-bearing now that `functions` is a minimum rather than a frozen
+  // constant: this is what keeps an added slug *file-backed*. A name that no
+  // signed, hash-verified entrypoint corresponds to cannot reach a deploy,
+  // whatever else the manifest claims.
   for (const name of manifest.functions) {
     if (!expected.has(`supabase/functions/${name}/index.ts`)) throw new Error(`missing function entrypoint: ${name}`);
   }
