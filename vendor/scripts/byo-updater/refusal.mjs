@@ -216,6 +216,16 @@ const REFUSAL_DEFINITIONS = Object.freeze({
     operator:
       'The installation could not be confirmed as complete. Run the Doctor workflow, then run setup again.',
   }),
+  bootstrap_manifest_schema: Object.freeze({
+    // The frozen bootstrap's one loud refusal about the manifest document
+    // itself, and the only escape it has. `MANIFEST_SCHEMA_VERSION` is
+    // the documented hatch for a meaning-changing manifest revision, and an
+    // enrolled operator's frozen copy cannot be taught a tolerated range later,
+    // so the one honest outcome is to stop and say which side is behind.
+    error: 'installed release manifest uses a schema this bootstrap cannot read',
+    operator:
+      "The installed release's manifest is a newer schema than this repository's bootstrap can read. Re-create the deployment repository from the current template, carry over .jotnow/deployment and your secrets, then run update again.",
+  }),
   core_diagnostics_failed: Object.freeze({
     error: 'core installation diagnostics did not pass; run Doctor for details',
     operator:
