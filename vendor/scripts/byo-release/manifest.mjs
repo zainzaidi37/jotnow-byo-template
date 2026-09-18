@@ -67,14 +67,18 @@ function isPlainObject(value) {
  *
  * The permanent compatibility gate is the operator's frozen vendored copy.
  * Before it can delegate, that copy parses durable state and authenticates the
- * installed control manifest with its own validators; control cannot
- * authenticate itself. Updates checkpoint only state/control and never refresh
- * `vendor/`.
+ * installed control manifest with its own readers; control cannot authenticate
+ * itself. Updates checkpoint only state/control and never refresh `vendor/`.
+ * Master's bootstrap reads both documents tolerantly
+ * (`scripts/byo-updater/handoff.mjs`), so a copy vendored from master ignores
+ * this region without knowing it exists; one vendored earlier still runs this
+ * validator, which is why the floor below is dated rather than removed.
  *
  * **Acceptance widens; emission does not move.** Nothing we build emits
  * `extensions` yet. Emission becomes safe only after every enrolled operator's
- * `vendor/` contains this validator. That is a permanent floor;
- * `minimumPreviousRelease` governs control hand-off and cannot relax it.
+ * `vendor/` contains this validator or the tolerant reader that supersedes it.
+ * That is a permanent floor; `minimumPreviousRelease` governs control hand-off
+ * and cannot relax it.
  *
  * The evolution rule: purely additive information goes in `extensions`, where
  * every compatible validator ignores it. Anything that changes the meaning of

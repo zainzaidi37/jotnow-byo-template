@@ -22,7 +22,7 @@ import {
   resolvePackagePath,
   sha256File,
 } from '../byo-release/manifest.mjs';
-import { verifySignedManifest } from '../byo-release/signature.mjs';
+import { STRICT_MANIFEST_READER, verifySignedManifest } from '../byo-release/signature.mjs';
 import { parseTrustList, validateTrustList } from '../byo-release/trust-list.mjs';
 
 export const STATE_SCHEMA_VERSION = 1;
@@ -37,7 +37,7 @@ export const ATTEMPT_PHASES = Object.freeze([
 const MODES = new Set(['full', 'backend-only']);
 const SHA256 = /^[a-f0-9]{64}$/;
 const COMMIT = /^[a-f0-9]{40}$/;
-const MAX_STATE_BYTES = 2 * 1024 * 1024;
+export const MAX_STATE_BYTES = 2 * 1024 * 1024;
 const VERSION =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
 
@@ -87,11 +87,13 @@ function releaseRecord(value, label) {
 
 /**
  * The same reserved must-ignore region as the signed manifest carries. The
- * permanent compatibility gate is the frozen vendored `FileStateStore`: every
- * command parses state before delegation (and before doctor's recovery catch),
- * while updates never refresh `vendor/`. Emission is safe only after every
- * enrolled operator's vendored validator accepts it; installed-control release
- * ordering cannot relax that floor.
+ * permanent compatibility gate is whatever reads durable state in the frozen
+ * vendored copy before delegation, because updates never refresh `vendor/`.
+ * On master that is `readHandoffStateFile` (`./handoff.mjs`), which ignores
+ * unknown keys outright; on a copy vendored earlier it is this validator, run
+ * through `FileStateStore`. Emission is safe only after every enrolled
+ * operator's vendored reader accepts it; installed-control release ordering
+ * cannot relax that floor.
  *
  * Carrying it through the rebuild below is not optional. `parseState` asserts
  * the file's bytes equal `stateBytes(validateState(parsed))`, so a validator
@@ -188,7 +190,7 @@ export function parseState(input) {
   return normalized;
 }
 
-async function assertOwnedDirectory(path) {
+export async function assertOwnedDirectory(path) {
   const root = resolve(path);
   await mkdir(root, { recursive: true, mode: 0o700 });
   const stat = await lstat(root);
@@ -207,7 +209,7 @@ async function syncDirectory(path) {
   }
 }
 
-async function readBoundedRegular(path, maximumBytes, label) {
+export async function readBoundedRegular(path, maximumBytes, label) {
   const before = await lstat(path).catch(() => null);
   if (!before?.isFile() || before.isSymbolicLink()) {
     throw new Error(`${label} must be a regular file with no symlink traversal`);
@@ -575,8 +577,27 @@ function sameControlRelease(target, manifest, manifestSha256) {
   );
 }
 
-export async function authenticateInstalledControl({ stateDirectory, state }) {
-  const validated = validateState(state);
+/**
+ * The full-schema reader pair. `authenticateInstalledControl` takes a reader so
+ * the template's frozen bootstrap can authenticate an installed control with a
+ * tolerant one (`scripts/byo-updater/handoff.mjs`) while every other caller —
+ * the installed control itself, the N-1 replay, the test harnesses — keeps the
+ * exact-shape validators. Only the reader changes; the minisign verification,
+ * the canonical re-encoding binding, the path and realpath guards, the
+ * inventory comparison and the per-file digests below are identical on both
+ * paths.
+ */
+export const STRICT_CONTROL_READER = Object.freeze({
+  state: validateState,
+  manifest: STRICT_MANIFEST_READER,
+});
+
+export async function authenticateInstalledControl({
+  stateDirectory,
+  state,
+  reader = STRICT_CONTROL_READER,
+}) {
+  const validated = reader.state(state);
   const control = validated.updaterControl;
   if (!control) throw new Error('deployment has no installed updater control');
   const root = resolve(stateDirectory, control.directory);
@@ -601,6 +622,7 @@ export async function authenticateInstalledControl({ stateDirectory, state }) {
     manifestBytes: rawManifest,
     signature,
     trustList: validated.effectiveTrustList,
+    reader: reader.manifest,
   });
   const manifestSha256 = createHash('sha256').update(rawManifest).digest('hex');
   const target =

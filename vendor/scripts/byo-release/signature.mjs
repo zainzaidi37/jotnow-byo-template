@@ -4,6 +4,36 @@ import { TextDecoder } from 'node:util';
 import { manifestBytes as canonicalManifestBytes, validateManifest } from './manifest.mjs';
 import { parseTrustList, resolveTrustedKey } from './trust-list.mjs';
 
+/**
+ * How `verifySignedManifest` turns verified bytes into a manifest value.
+ *
+ * `validate` is a shape gate on already-trusted input: by the time it runs
+ * both minisign signatures have passed, so it contributes nothing to
+ * authenticity and can be relaxed without losing a guarantee. `encode` is the
+ * part that cannot be relaxed. It re-serializes the *parsed* value and the
+ * caller compares the result to the signed message, which is what proves the
+ * value in hand is the value that was signed rather than a reinterpretation of
+ * the same bytes.
+ *
+ * A reader is therefore only safe if `encode` is a faithful inverse of
+ * `JSON.parse` over everything `validate` accepts. `stableJson` is generic —
+ * it sorts `Object.keys` at every level and enumerates no fields — so a reader
+ * that accepts unknown keys still re-encodes to the exact signed bytes. A
+ * reader whose `encode` dropped or normalized anything `validate` accepted
+ * would silently break the binding, which is the one failure this abstraction
+ * must not permit.
+ *
+ * `adoptable` marks a reader whose result carries the whole manifest, which is
+ * what `adoptTrustList` needs. A narrowing reader must leave it false: a
+ * partial view would let adoption read a component list that was never
+ * validated.
+ */
+export const STRICT_MANIFEST_READER = Object.freeze({
+  validate: validateManifest,
+  encode: canonicalManifestBytes,
+  adoptable: true,
+});
+
 const UTF8 = new TextDecoder('utf-8', { fatal: true });
 const SPKI_ED25519_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
 const SIGNATURE_ALGORITHM = Buffer.from('ED', 'ascii');
@@ -89,7 +119,12 @@ export function trustedCommentForManifest(manifest) {
   return `jotnow release ${manifest.release.version} sequence ${manifest.release.sequence} key ${manifest.release.signingKeyId}`;
 }
 
-export function verifySignedManifest({ manifestBytes, signature, trustList }) {
+export function verifySignedManifest({
+  manifestBytes,
+  signature,
+  trustList,
+  reader = STRICT_MANIFEST_READER,
+}) {
   const message = bytes(manifestBytes, 'manifest bytes');
   if (message.length > MAX_MANIFEST_BYTES) throw new Error('manifest is too large');
   let untrustedManifest;
@@ -116,25 +151,31 @@ export function verifySignedManifest({ manifestBytes, signature, trustList }) {
   }
 
   // Manifest fields and hashes become trusted only after both signatures pass.
-  validateManifest(untrustedManifest);
+  const parsedManifest = reader.validate(untrustedManifest);
   if (untrustedManifest.signature?.algorithm !== 'minisign') throw new Error('signed manifest must declare minisign');
-  if (!message.equals(Buffer.from(canonicalManifestBytes(untrustedManifest), 'utf8'))) {
+  // The binding. `reader.encode` re-serializes the object the parse produced;
+  // equality with the signed message is what makes the parsed value — not just
+  // the bytes — authenticated. Without it a tolerant reader would accept bytes
+  // whose signature covers one object while handing the caller another.
+  if (!message.equals(Buffer.from(reader.encode(untrustedManifest), 'utf8'))) {
     throw new Error('signed manifest must use canonical encoding');
   }
-  const expectedComment = trustedCommentForManifest(untrustedManifest);
+  const expectedComment = trustedCommentForManifest(parsedManifest);
   if (parsedSignature.trustedComment !== expectedComment) {
     throw new Error('trusted comment does not describe the signed manifest');
   }
-  const authenticatedManifest = deepFreeze(untrustedManifest);
+  const authenticatedManifest = deepFreeze(parsedManifest);
   const result = Object.freeze({
     manifest: authenticatedManifest,
     signingKeyId: untrustedKeyId,
     trustedComment: parsedSignature.trustedComment,
   });
-  VERIFIED_RELEASES.set(result, Object.freeze({
-    manifest: authenticatedManifest,
-    publicKey: trustedKey.encoded,
-  }));
+  if (reader.adoptable === true) {
+    VERIFIED_RELEASES.set(result, Object.freeze({
+      manifest: authenticatedManifest,
+      publicKey: trustedKey.encoded,
+    }));
+  }
   return result;
 }
 
