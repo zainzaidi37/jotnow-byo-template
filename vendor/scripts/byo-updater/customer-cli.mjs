@@ -26,6 +26,7 @@ import {
 import { validateOperatorConfig } from './operator-config.mjs';
 import { createPsqlProbe, resolveDatabaseEndpoint } from './database-endpoint.mjs';
 import { downloadRelease } from './release-download.mjs';
+import { authenticateHandoffControl, readHandoffStateFile } from './handoff.mjs';
 import { acquireUpdateLock, authenticateInstalledControl, FileStateStore } from './state.mjs';
 import { runUpdate } from './updater.mjs';
 import { formatCliFailure, main as localUpdaterMain } from './cli.mjs';
@@ -262,14 +263,22 @@ async function resolveOperatorConfig(
   return readOperatorConfig(mode, stateDirectory, trustListPath, resolvedDatabaseUrl);
 }
 
+/**
+ * The frozen bootstrap. Everything it does before `import()` is the template's
+ * permanent floor, so it reads durable state and authenticates the installed
+ * control through `handoff.mjs` — both minisign signatures, the canonical
+ * re-encoding binding, the trust list's own schema, the control-file digests,
+ * and tolerant readers of nothing more than the fields below. The full
+ * validators live behind the hand-off, where a release can change them.
+ */
 export async function selectInstalledControl(
   repository,
   stateDirectory,
   argv,
-  authenticate = authenticateInstalledControl,
+  authenticate = authenticateHandoffControl,
 ) {
   if (process.env.JOTNOW_AUTHENTICATED_CONTROL === '1') return false;
-  const state = await new FileStateStore(stateDirectory).read();
+  const state = await readHandoffStateFile(stateDirectory);
   if (!state?.updaterControl) return false;
   const effectiveArgv =
     argv[0] === 'update' && argv.length === 1
@@ -282,9 +291,15 @@ export async function selectInstalledControl(
     if (argv[0] === 'doctor') return false;
     throw error;
   }
-  // Keep read-only diagnostics current when an older signed updater is installed.
-  // Doctor independently authenticates its inventory before creating provider adapters.
-  if (argv[0] === 'doctor' || argv[0] === 'setup') return false;
+  // `doctor` delegates like every other command: its inventory, its checks and
+  // its report belong to the installed release, not to whatever the template
+  // was vendored with. The catch above keeps the diagnostic that matters most
+  // — if authentication fails, doctor still runs locally, because a diagnostic
+  // that cannot run when things are broken is worthless.
+  //
+  // `setup` stays local. It is the first-install path, and the control
+  // directory it would hand off to belongs to the release it is installing.
+  if (argv[0] === 'setup') return false;
   const initialRecoveryUpdate =
     effectiveArgv[0] === 'update' &&
     effectiveArgv.length === 2 &&
@@ -333,8 +348,43 @@ export async function selectInstalledControl(
   if (initialRecoveryUpdate) return false;
   const entry = join(authenticated.root, 'scripts/byo-updater/customer-cli.mjs');
   const module = await import(pathToFileURL(entry).href);
+  const selected = Object.hasOwn(process.env, 'JOTNOW_AUTHENTICATED_CONTROL')
+    ? process.env.JOTNOW_AUTHENTICATED_CONTROL
+    : undefined;
   process.env.JOTNOW_AUTHENTICATED_CONTROL = '1';
-  const result = await withLegacyOperatorUrlDefaults(() => module.main(effectiveArgv));
+  let result;
+  try {
+    result = await withLegacyOperatorUrlDefaults(() => module.main(effectiveArgv));
+  } catch (error) {
+    // The same fallback as the authentication catch above, for the same
+    // reason: a diagnostic that cannot run when things are broken is
+    // worthless. It matters concretely because the workflow and the installed
+    // control are frozen independently — the template's doctor step passes
+    // `--core`, which reached the CLI only in 0.1.0-rc.2, while a fresh
+    // install's first hop lands on rc.1 and each `update` advances one
+    // release. Delegating that dispatch to rc.1 turns a working diagnostic
+    // into an invalid-configuration error. Doctor is read-only and makes no
+    // durable change, so re-running it locally costs nothing; every other
+    // command propagates, because retrying one of those locally would run
+    // enrollment-era code against a live release.
+    if (argv[0] !== 'doctor') throw error;
+    // Never silently. The authentication fallback above degrades visibly,
+    // because the local doctor prints that the inventory could not be
+    // authenticated; this one would otherwise print a healthy-looking report
+    // from an older local diagnostic while the installed one stays broken and
+    // the workflow step stays green. One bounded line names what failed.
+    const reason = (
+      typeof error?.message === 'string' ? error.message : String(error)
+    ).slice(0, 500);
+    process.stderr.write(
+      `Installed release diagnostics did not run (${reason}); falling back to ` +
+        `this repository's vendored doctor. The installed release's own ` +
+        `diagnostic is broken and needs attention.\n`,
+    );
+    if (selected === undefined) delete process.env.JOTNOW_AUTHENTICATED_CONTROL;
+    else process.env.JOTNOW_AUTHENTICATED_CONTROL = selected;
+    return false;
+  }
   return Number.isInteger(result) ? result : true;
 }
 

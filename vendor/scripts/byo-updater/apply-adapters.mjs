@@ -78,6 +78,45 @@ async function fetchWithTimeout(fetchImpl, url, options, timeoutMs, reason) {
   }
 }
 
+/**
+ * A bounded Management API call whose result is the status alone.
+ *
+ * `fetchWithTimeout` above parses a JSON body, and the secrets endpoint can
+ * answer `201` with no body at all — parsing that would turn a success into a
+ * refusal. Same deadline, same abort, same fixed refusal; the body is drained
+ * and cancelled rather than read, so a hostile or endless stream cannot hold
+ * the update open.
+ */
+async function sendWithTimeout(fetchImpl, url, options, timeoutMs, reason) {
+  const controller = new AbortController();
+  let timer;
+  try {
+    return await Promise.race([
+      Promise.resolve()
+        .then(() => fetchImpl(url, { ...options, signal: controller.signal }))
+        .then((response) => {
+          try {
+            void Promise.resolve(response?.body?.cancel?.()).catch(() => {});
+          } catch {
+            // A hostile stream cannot delay or replace the fixed refusal.
+          }
+          if (!response?.ok) throw new UpdaterRefusal(reason);
+          return true;
+        }),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          controller.abort();
+          reject(new UpdaterRefusal(reason));
+        }, timeoutMs);
+      }),
+    ]);
+  } catch {
+    throw new UpdaterRefusal(reason);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function versions(manifest) {
   return manifest.migrations.map((name) => name.slice(0, 14));
 }
@@ -257,6 +296,50 @@ export function createUpdaterAdapters(config, dependencies = {}) {
     }
   }
 
+  /**
+   * Tell the deployed functions which release they are, for the client-side
+   * release handshake (`apps/web/src/data/release-handshake.ts`).
+   *
+   * The schema axis has the compatibility epoch and CI's N−1 migration replay;
+   * the frontend ↔ Edge Function axis had nothing, because `byo.jotnow.dev`
+   * serves catalog head to a backend the operator updates by hand. One
+   * function (`usage-limits`) reports this value in a response header and the
+   * client says "run update" when it is behind.
+   *
+   * Via the Management API, never `supabase secrets set`: that CLI command
+   * pushes `config.toml`'s mock values over a project's real secrets and is
+   * banned repo-wide. This runs after a successful deploy, so the value never
+   * claims a release that did not ship.
+   *
+   * It reuses `supabase_management_access` rather than introducing a new
+   * refusal reason. Constructing one would work — the control is imported
+   * in-process (`customer-cli.mjs`), so the *control's* `refusal.mjs` builds
+   * the error and nothing throws. The cost is at the other end: an operator
+   * whose `vendor/` predates the new reason normalizes it to `null` and prints
+   * the generic "run doctor" line instead of the specific one, and nothing ever
+   * refreshes `vendor/`.
+   */
+  async function publishReleaseSequence(manifest) {
+    const sequence = manifest?.release?.sequence;
+    if (!Number.isSafeInteger(sequence) || sequence <= 0) {
+      throw fixedError('release sequence is invalid');
+    }
+    await sendWithTimeout(
+      fetchImpl,
+      `https://api.supabase.com/v1/projects/${config.projectRef}/secrets`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${config.managementToken}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify([{ name: 'JOTNOW_RELEASE_SEQUENCE', value: String(sequence) }]),
+      },
+      config.timeoutMs,
+      'supabase_management_access',
+    );
+  }
+
   return Object.freeze({
     async preflightTarget({ mode }) {
       if (mode !== config.mode) throw new UpdaterRefusal('mode_mismatch');
@@ -371,6 +454,7 @@ export function createUpdaterAdapters(config, dependencies = {}) {
           }
         },
       );
+      await publishReleaseSequence(manifest);
     },
 
     async publishWeb({ packageRoot, manifest }) {
