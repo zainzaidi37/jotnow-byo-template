@@ -16,7 +16,12 @@ import {
 import { hostname } from 'node:os';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
-import { stableJson, resolvePackagePath, sha256File } from '../byo-release/manifest.mjs';
+import {
+  assertJsonSafeExtensions,
+  stableJson,
+  resolvePackagePath,
+  sha256File,
+} from '../byo-release/manifest.mjs';
 import { verifySignedManifest } from '../byo-release/signature.mjs';
 import { parseTrustList, validateTrustList } from '../byo-release/trust-list.mjs';
 
@@ -47,6 +52,20 @@ function exactKeys(value, keys, label) {
   }
 }
 
+function exactKeysWithOptional(value, keys, optional, label) {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  const permitted = new Set(optional);
+  const actual = Object.keys(value)
+    .filter((key) => !permitted.has(key))
+    .sort();
+  const expected = [...keys].sort();
+  if (actual.join('\0') !== expected.join('\0')) {
+    throw new Error(`${label} keys must be exactly: ${expected.join(', ')}`);
+  }
+}
+
 function releaseRecord(value, label) {
   exactKeys(
     value,
@@ -66,8 +85,25 @@ function releaseRecord(value, label) {
   return Object.freeze({ ...value });
 }
 
+/**
+ * The same reserved must-ignore region as the signed manifest carries. The
+ * permanent compatibility gate is the frozen vendored `FileStateStore`: every
+ * command parses state before delegation (and before doctor's recovery catch),
+ * while updates never refresh `vendor/`. Emission is safe only after every
+ * enrolled operator's vendored validator accepts it; installed-control release
+ * ordering cannot relax that floor.
+ *
+ * Carrying it through the rebuild below is not optional. `parseState` asserts
+ * the file's bytes equal `stateBytes(validateState(parsed))`, so a validator
+ * that accepted `extensions` and then dropped it on the rebuild would refuse
+ * to read back the very file it had just written — and on a read-modify-write
+ * path it would silently erase an older field instead. Dropping is worse than
+ * rejecting.
+ *
+ * Acceptance widens; emission does not. Nothing writes `extensions` yet.
+ */
 export function validateState(value) {
-  exactKeys(
+  exactKeysWithOptional(
     value,
     [
       'schemaVersion',
@@ -77,8 +113,12 @@ export function validateState(value) {
       'updaterControl',
       'attempt',
     ],
+    ['extensions'],
     'updater state',
   );
+  if (Object.hasOwn(value, 'extensions')) {
+    assertJsonSafeExtensions(value.extensions, 'state extensions');
+  }
   if (value.schemaVersion !== STATE_SCHEMA_VERSION)
     throw new Error('unsupported updater state schema');
   if (!MODES.has(value.mode)) throw new Error('updater state mode is invalid');
@@ -117,6 +157,10 @@ export function validateState(value) {
     effectiveTrustList,
     updaterControl,
     attempt,
+    // Spread, not assigned: a genuinely absent region must stay absent, or
+    // every existing state file's canonical bytes would change. Presence was
+    // validated above, so a supplied region cannot be silently erased.
+    ...(value.extensions === undefined ? {} : { extensions: value.extensions }),
   });
 }
 

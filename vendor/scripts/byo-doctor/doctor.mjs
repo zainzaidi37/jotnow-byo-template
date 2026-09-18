@@ -1,4 +1,5 @@
 import { readdir } from 'node:fs/promises';
+import { FUNCTION_SLUG } from '../byo-release/manifest.mjs';
 import { SCHEMA_PREREQUISITES } from './schema.mjs';
 
 export const REQUIRED_FUNCTIONS = Object.freeze([
@@ -102,7 +103,14 @@ function provider(value) {
  * All outputs are projected into known fields; exception messages are never retained.
  */
 export async function runDoctor(
-  { migrationDirectory, migrationVersions, expectedEpoch, timeoutMs = 5000, coreOnly = false } = {},
+  {
+    migrationDirectory,
+    migrationVersions,
+    expectedEpoch,
+    timeoutMs = 5000,
+    coreOnly = false,
+    functionInventory = REQUIRED_FUNCTIONS,
+  } = {},
   adapters = {},
 ) {
   const hasDirectory = typeof migrationDirectory === 'string' && migrationDirectory.length > 0;
@@ -119,6 +127,24 @@ export async function runDoctor(
     throw new Error(
       'Doctor requires one migration inventory source, positive expected epoch, and timeout of 1–60000 ms.',
     );
+  }
+  // The inventory a caller may supply instead of the constant, exactly like
+  // `migrationVersions` beside it: an embedder holding an authenticated
+  // manifest diagnoses the functions *that release actually ships*, so a
+  // release that adds one is not reported healthy while its new function is
+  // absent. `REQUIRED_FUNCTIONS` stays the floor — a supplied inventory may
+  // add to it and may not drop from it, because that set is what a healthy
+  // deployment must have whatever the manifest says.
+  if (!Array.isArray(functionInventory)) {
+    throw new Error('Doctor requires a function inventory covering every required function.');
+  }
+  const functions = Object.freeze([...new Set(functionInventory)]);
+  if (
+    functions.length !== functionInventory.length ||
+    functions.some((slug) => typeof slug !== 'string' || !FUNCTION_SLUG.test(slug)) ||
+    REQUIRED_FUNCTIONS.some((slug) => !functions.includes(slug))
+  ) {
+    throw new Error('Doctor requires a function inventory covering every required function.');
   }
   const authenticatedVersions = hasInventory ? versions(migrationVersions) : null;
   const read = (name) => (adapters.database ? () => adapters.database.read(name) : undefined);
@@ -239,7 +265,7 @@ export async function runDoctor(
         adapters.functions,
         (value) => {
           if (!Array.isArray(value)) invalid();
-          const deployments = REQUIRED_FUNCTIONS.map((slug) => {
+          const deployments = functions.map((slug) => {
             const matches = value.filter((f) => f?.slug === slug);
             if (matches.length > 1) invalid();
             const f = matches[0];

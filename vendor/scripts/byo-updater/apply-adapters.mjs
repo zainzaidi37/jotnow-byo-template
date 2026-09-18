@@ -337,7 +337,18 @@ export function createUpdaterAdapters(config, dependencies = {}) {
     },
 
     async deployFunctions({ packageRoot, manifest }) {
-      if (manifest.functions.join('\0') !== REQUIRED_FUNCTIONS.join('\0')) {
+      // A minimum, matching the manifest validator: a release may add an Edge
+      // Function, and an exact comparison here would refuse it after the
+      // signature had already been checked. `REQUIRED_FUNCTIONS` remains the
+      // floor a healthy deployment must carry.
+      //
+      // The slugs themselves are already shape-validated at the manifest
+      // boundary (`FUNCTION_SLUG` in byo-release/manifest.mjs) and
+      // `verifyPackage` has proved each one has a signed
+      // `supabase/functions/<slug>/index.ts` behind it — which is what makes
+      // the loop below safe to drive from data rather than a constant.
+      const required = new Set(manifest.functions);
+      if (REQUIRED_FUNCTIONS.some((slug) => !required.has(slug))) {
         throw fixedError('release function inventory is invalid');
       }
       await withWorkingCopy(
@@ -346,7 +357,7 @@ export function createUpdaterAdapters(config, dependencies = {}) {
         manifest,
         new Set(['functions', 'config']),
         async (root, home) => {
-          for (const slug of REQUIRED_FUNCTIONS) {
+          for (const slug of manifest.functions) {
             await runProcess({
               executable: config.executables.supabase,
               args: ['functions', 'deploy', slug, '--project-ref', config.projectRef, '--use-api'],

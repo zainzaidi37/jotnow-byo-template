@@ -12,7 +12,9 @@ const OPENAI_MODELS_URL = 'https://api.openai.com/v1/models';
 const VOYAGE_EMBEDDINGS_URL = 'https://api.voyageai.com/v1/embeddings';
 const MAX_MANAGEMENT_BODY_BYTES = 256 * 1024;
 const PROJECT_REF = /^[a-z0-9]{20}$/;
-const FUNCTION_SLUG = /^[a-zA-Z0-9_-]{1,128}$/;
+// Deliberately looser than the manifest boundary: this describes what the
+// provider already has deployed, not a slug we are about to deploy.
+const MANAGEMENT_API_SLUG = /^[a-zA-Z0-9_-]{1,128}$/;
 const MAX_CREDENTIAL_BYTES = 16 * 1024;
 const FUNCTION_STATUSES = new Set(['ACTIVE', 'REMOVED', 'THROTTLED']);
 
@@ -159,7 +161,7 @@ function parseFunctions(value) {
     if (
       entry === null ||
       typeof entry !== 'object' ||
-      !FUNCTION_SLUG.test(entry.slug) ||
+      !MANAGEMENT_API_SLUG.test(entry.slug) ||
       typeof entry.status !== 'string' ||
       entry.status.length < 1 ||
       entry.status.length > 64

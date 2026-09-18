@@ -24,6 +24,7 @@ import {
   validateLicenseInstance,
 } from './license-lifecycle.mjs';
 import { validateOperatorConfig } from './operator-config.mjs';
+import { createPsqlProbe, resolveDatabaseEndpoint } from './database-endpoint.mjs';
 import { downloadRelease } from './release-download.mjs';
 import { acquireUpdateLock, authenticateInstalledControl, FileStateStore } from './state.mjs';
 import { runUpdate } from './updater.mjs';
@@ -188,10 +189,42 @@ function git(repository, args) {
   });
 }
 
-function operatorConfig(mode, stateDirectory, trustListPath) {
+// Resolved once per process: `setup` runs `update` in the same process, and the
+// probe must not run twice. The memo is keyed by the raw secret, so a test that
+// changes the environment resolves again.
+let resolvedDatabaseEndpoint = null;
+
+async function operatorDatabaseUrl(repository, dependencies = {}) {
+  const databaseUrl = process.env.JOTNOW_DATABASE_URL;
+  const psql = process.env.JOTNOW_PSQL_BIN;
+  // Without a probe there is no evidence of unreachability, and resolving on a
+  // failure we cannot observe would replace a precise configuration refusal
+  // with a misleading one.
+  if (!databaseUrl || !psql) return databaseUrl;
+  if (resolvedDatabaseEndpoint?.databaseUrl === databaseUrl) {
+    return resolvedDatabaseEndpoint.resolved;
+  }
+  const timeoutMs = Number(process.env.JOTNOW_UPDATE_TIMEOUT_MS || 120_000);
+  const resolved = await (dependencies.resolveDatabaseEndpoint ?? resolveDatabaseEndpoint)({
+    databaseUrl,
+    projectRef: process.env.JOTNOW_SUPABASE_PROJECT_REF,
+    managementToken: process.env.SUPABASE_ACCESS_TOKEN,
+    timeoutMs,
+    probe: dependencies.databaseProbe ?? createPsqlProbe({ psql, cwd: repository, timeoutMs }),
+  });
+  resolvedDatabaseEndpoint = { databaseUrl, resolved };
+  return resolved;
+}
+
+function operatorConfig(
+  mode,
+  stateDirectory,
+  trustListPath,
+  databaseUrl = process.env.JOTNOW_DATABASE_URL,
+) {
   return validateOperatorConfig(
     {
-      databaseUrl: process.env.JOTNOW_DATABASE_URL,
+      databaseUrl,
       projectRef: process.env.JOTNOW_SUPABASE_PROJECT_REF,
       managementToken: process.env.SUPABASE_ACCESS_TOKEN,
       cloudflareToken: process.env.CLOUDFLARE_API_TOKEN,
@@ -209,6 +242,24 @@ function operatorConfig(mode, stateDirectory, trustListPath) {
     },
     { mode },
   );
+}
+
+async function resolveOperatorConfig(
+  readOperatorConfig,
+  mode,
+  stateDirectory,
+  trustListPath,
+  repository,
+  dependencies,
+) {
+  const configuredDatabaseUrl = process.env.JOTNOW_DATABASE_URL;
+  // Validate every operator prerequisite before the new reachability probes or
+  // Management API request. Otherwise a missing token, unsafe executable, or
+  // invalid timeout can be hidden behind the fallback's IPv6 refusal.
+  const initial = readOperatorConfig(mode, stateDirectory, trustListPath, configuredDatabaseUrl);
+  const resolvedDatabaseUrl = await operatorDatabaseUrl(repository, dependencies);
+  if (resolvedDatabaseUrl === configuredDatabaseUrl) return initial;
+  return readOperatorConfig(mode, stateDirectory, trustListPath, resolvedDatabaseUrl);
 }
 
 export async function selectInstalledControl(
@@ -261,7 +312,25 @@ export async function selectInstalledControl(
   if (explicitUpdateMode && state.mode !== explicitUpdateMode && !wideningUpdate) {
     throw new UpdaterRefusal('mode_mismatch');
   }
-  if (initialRecoveryUpdate || wideningUpdate) return false;
+  // `initialRecoveryUpdate` must stay on the template's vendored copy, and the
+  // reason is specific: `installedRelease === null` with an `attempt` stuck at
+  // `control_installed` for sequence 1 means the control directory sitting
+  // there belongs to the release being installed — the *target*, not a release
+  // that ever completed. Handing off to it would have a release validate and
+  // drive its own first installation, which is precisely the property the
+  // one-release-behind design exists to avoid.
+  //
+  // Widening does not share that reason, and it used to be lumped in with it.
+  // Here `installedRelease !== null`, `attempt === null`, and the control
+  // sequence equals the installed release's — the control directory is a
+  // release that completed, which is exactly the "release N validates N+1"
+  // case. And widening always applies a new release (`update()` refuses with
+  // `widening_requires_release` when the channel is up to date), so returning
+  // false meant an operator who enrolled before a validator change and later
+  // widened `backend-only` → `full` ran enrollment-era validation against the
+  // newest manifest — the one path where stale validation still reached a
+  // live release.
+  if (initialRecoveryUpdate) return false;
   const entry = join(authenticated.root, 'scripts/byo-updater/customer-cli.mjs');
   const module = await import(pathToFileURL(entry).href);
   process.env.JOTNOW_AUTHENTICATED_CONTROL = '1';
@@ -296,7 +365,14 @@ export async function update(repository, stateDirectory, mode, dependencies = {}
   const acquireLock = dependencies.acquireUpdateLock ?? acquireUpdateLock;
   const channel = await readChannel(repository);
   const trustListPath = resolve(repository, channel.trustList);
-  const config = readOperatorConfig(mode, stateDirectory, trustListPath);
+  const config = await resolveOperatorConfig(
+    readOperatorConfig,
+    mode,
+    stateDirectory,
+    trustListPath,
+    repository,
+    dependencies,
+  );
   const durable = await createStores(repository, stateDirectory);
   const instance = await durable.instance.read();
   if (!instance || instance.status !== 'linked') throw new UpdaterRefusal('deployment_not_linked');
@@ -611,6 +687,7 @@ export async function doctor(repository, stateDirectory, argv, dependencies = {}
     await (dependencies.runDoctor ?? runDoctor)(
       {
         migrationVersions: manifest.migrations.map((name) => name.slice(0, 14)),
+        functionInventory: manifest.functions,
         expectedEpoch: manifest.release.clientCompatibilityEpoch,
         timeoutMs,
         coreOnly,
@@ -646,7 +723,14 @@ export async function setup(repository, stateDirectory, dependencies = {}) {
   // Validate database/project binding and every mode-specific credential before
   // the public license provider can be mutated.
   const trustListPath = resolve(repository, channel.trustList ?? 'trust/production-v1.json');
-  const config = readOperatorConfig(mode, stateDirectory, trustListPath);
+  const config = await resolveOperatorConfig(
+    readOperatorConfig,
+    mode,
+    stateDirectory,
+    trustListPath,
+    repository,
+    dependencies,
+  );
   const adapters = (dependencies.createUpdaterAdapters ?? createUpdaterAdapters)(config);
   await adapters.preflightTarget({ mode });
 

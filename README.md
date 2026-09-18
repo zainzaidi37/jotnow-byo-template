@@ -80,6 +80,13 @@ The database URL is used for migrations. `SUPABASE_ACCESS_TOKEN` deploys
 functions and has **account-wide access**. Both must target your intended
 project. Jotnow never receives these credentials.
 
+Either connection URL from the **Connect** dialog works. Supabase publishes the
+direct host `db.<ref>.supabase.co` over IPv6 only, and GitHub-hosted runners are
+IPv4-only, so if the direct host cannot be reached the workflow reads your
+project's session pooler hostname from the Management API and retries there on
+port 5432. It never guesses that hostname. If neither endpoint answers, the run
+says so and names the session pooler.
+
 ### Authentication
 
 In **Supabase Dashboard → Authentication → URL Configuration**, set:
@@ -136,6 +143,11 @@ that changing secrets does not require redeploying functions.
   Do not reset the backend, edit `.jotnow`, or switch releases to bypass recovery.
 - Migration drift stops updates. Use [the recovery guidance](#recovering-a-failed-run);
   updates never rewrite migration history.
+- The shared app at `byo.jotnow.dev` is built for the newest release and is
+  tested against the release before it. Two or more releases behind is outside
+  that window: the app may report that your database is behind and stop syncing
+  until you run `update`; notes already on the device stay there. Run `update`
+  after each release to stay inside the window.
 
 ### Adding Pages to a backend-only installation
 
