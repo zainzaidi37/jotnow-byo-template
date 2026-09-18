@@ -25,10 +25,21 @@
  *   per-file digests in `authenticateInstalledControl`.
  *
  * What is relaxed: unknown keys, top-level and nested, on both the manifest and
- * the durable state, and a bumped `schemaVersion` on either. Every field the
- * hand-off actually reads is still type-checked. Relaxing the shape gate costs
- * no authenticity — `verifySignedManifest` runs it only after both signatures
- * have passed, on bytes that are already trusted.
+ * the durable state. Every field the hand-off actually reads is still
+ * type-checked. Relaxing the shape gate costs no authenticity —
+ * `verifySignedManifest` runs it only after both signatures have passed, on
+ * bytes that are already trusted.
+ *
+ * `schemaVersion` is deliberately one-sided. The **manifest** is pinned to
+ * `HANDOFF_MANIFEST_SCHEMA_VERSION` below and any other value — including a
+ * missing one — is the loud refusal `bootstrap_manifest_schema`. That is the
+ * bootstrap's only escape: it cannot be handed a tolerated range later, so a
+ * meaning-changing manifest revision must strand enrolled copies by design
+ * rather than have v1 semantics applied to a v2 document. The **durable
+ * state's** `schemaVersion` stays tolerated, because that file is written by
+ * our newer installed control on every run and a pin there would fail on every
+ * update after a bump rather than once; the rule in its place is that the state
+ * fields the hand-off reads never change meaning, they only gain neighbours.
  *
  * `FUNCTION_SLUG` deliberately does not appear here. A slug reaches a
  * `supabase functions deploy` argv and a package path inside the *installed
@@ -40,6 +51,7 @@ import { lstat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { assertPackagePath, stableJson } from '../byo-release/manifest.mjs';
 import { parseTrustList } from '../byo-release/trust-list.mjs';
+import { UpdaterRefusal } from './refusal.mjs';
 import {
   assertOwnedDirectory,
   authenticateInstalledControl,
@@ -47,6 +59,13 @@ import {
   readBoundedRegular,
 } from './state.mjs';
 
+/**
+ * The bootstrap's own copy of the manifest schema version, deliberately not
+ * imported from `manifest.mjs`: that constant belongs to whatever release is
+ * being authored, this one belongs to the frozen vendored copy, and the whole
+ * point is that the two can disagree.
+ */
+const HANDOFF_MANIFEST_SCHEMA_VERSION = 1;
 const SHA256 = /^[a-f0-9]{64}$/;
 const MAX_HANDOFF_TEXT = 512;
 /**
@@ -149,6 +168,12 @@ function assertBoundedNesting(value, label) {
 export function readHandoffManifest(untrusted) {
   const manifest = handoffObject(untrusted, 'manifest');
   assertBoundedNesting(manifest, 'manifest');
+  // Before anything is read out of the document, and before any control file is
+  // touched. A manifest this bootstrap cannot read is refused, never
+  // reinterpreted.
+  if (manifest.schemaVersion !== HANDOFF_MANIFEST_SCHEMA_VERSION) {
+    throw new UpdaterRefusal('bootstrap_manifest_schema');
+  }
   const release = handoffObject(manifest.release, 'manifest.release');
   const components = handoffObject(manifest.components, 'manifest.components');
   if (!Array.isArray(manifest.files)) throw new Error('manifest.files must be an array');
