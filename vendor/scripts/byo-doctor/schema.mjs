@@ -90,7 +90,9 @@ const functions = [
   'supersede_recall_runs(uuid)',
   'restore_note_version(uuid)',
   'merge_tags(uuid,uuid[])',
+  'attachment_usage()',
 ];
+
 const triggers = [
   'notes.notes_set_timestamps',
   'folders.folders_set_timestamps',
@@ -115,4 +117,35 @@ export const SCHEMA_PREREQUISITES = Object.freeze(
     ...triggers.map((name) => ({ kind: 'trigger', name: `public.${name}` })),
     { kind: 'extension', name: 'extensions.vector' },
   ].map(Object.freeze),
+);
+
+/**
+ * The image-attachment bucket (plan D12), a prerequisite of its own kind.
+ *
+ * A bucket is a **row** in `storage.buckets`, not a catalog object, so nothing
+ * in `pg_catalog` knows it exists and the inventory above cannot see it. That
+ * matters: the attachments migration is re-runnable, but its bucket insert is
+ * `on conflict do nothing`, so a project whose bucket was dropped keeps a
+ * healthy `attachment_usage()`, two healthy policies, and nowhere to put an
+ * image. Without this the doctor is blind to the feature's main dependency.
+ *
+ * It is a **separate check** rather than one more row in the schema query, and
+ * that separation is the whole reason it is safe. `storage.buckets` has RLS
+ * enabled and is owned by `supabase_storage_admin`, and the doctor's script
+ * runs every statement under `SET LOCAL row_security = off` — which *errors*
+ * for a role that is neither the owner nor `BYPASSRLS`. Measured 2026-09-21:
+ * `postgres` has `rolbypassrls = true` and SELECT here both on the local stack
+ * and on a real hosted project, so the role a Supabase database URL names can
+ * read it; a role that cannot would otherwise have turned the entire
+ * structural inventory into one `permission_denied` and lost every other
+ * answer with it. On its own check, that role loses only this one line.
+ *
+ * Only the bucket's PRESENCE is a prerequisite. Its `public`,
+ * `file_size_limit` and `allowed_mime_types` are deliberately left as the
+ * operator has them on a re-run (a BYO operator may have widened their own
+ * mime list), so reporting divergence there would be a claim this inventory
+ * makes about nothing else either.
+ */
+export const BUCKET_PREREQUISITES = Object.freeze(
+  [{ kind: 'bucket', name: 'storage.buckets.note-attachments' }].map(Object.freeze),
 );
