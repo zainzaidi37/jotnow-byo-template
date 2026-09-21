@@ -2,11 +2,19 @@ import { spawn } from 'node:child_process';
 import { delimiter, isAbsolute } from 'node:path';
 import { Buffer } from 'node:buffer';
 
-import { SCHEMA_PREREQUISITES } from './schema.mjs';
+import { BUCKET_PREREQUISITES, SCHEMA_PREREQUISITES } from './schema.mjs';
 
 const MAX_STDOUT_BYTES = 1024 * 1024;
 const MAX_STDERR_BYTES = 64 * 1024;
-const CHECK_NAMES = new Set(['migrations', 'epoch', 'marker', 'extensions', 'schema', 'backfill']);
+const CHECK_NAMES = new Set([
+  'migrations',
+  'epoch',
+  'marker',
+  'extensions',
+  'schema',
+  'bucket',
+  'backfill',
+]);
 
 const QUERIES = {
   migrations: `SELECT version::text
@@ -60,6 +68,15 @@ FROM (
   JOIN pg_catalog.pg_namespace n ON e.extnamespace = n.oid
 ) inventory
 ORDER BY inventory.object_kind, inventory.object_name;`,
+  // Storage buckets are rows, not catalog entries, so this cannot ride along
+  // with the inventory above — and must not, because reading an RLS-enabled
+  // table under `row_security = off` is the one statement in this module that
+  // needs BYPASSRLS. Its own check, so a role that lacks it loses this answer
+  // and no other (`schema.mjs`, BUCKET_PREREQUISITES).
+  bucket: `SELECT 'bucket'::text AS object_kind,
+       'storage.buckets.' || b.id AS object_name
+FROM storage.buckets b
+ORDER BY object_name;`,
 };
 
 export const BACKFILL_COUNT_SQL = `SELECT count(*)::text
@@ -401,6 +418,28 @@ function parseSchema(stdout) {
   };
 }
 
+function parseBucket(stdout) {
+  const present = new Set();
+  for (const line of linesOf(stdout)) {
+    const fields = line.split('\t');
+    if (
+      fields.length !== 2 ||
+      fields[0] !== 'bucket' ||
+      fields[1].length === 0 ||
+      fields[1].length > 512 ||
+      /[^\x20-\x7e]/.test(fields[1])
+    ) {
+      throw safeError('invalid_response');
+    }
+    present.add(`${fields[0]}\t${fields[1]}`);
+  }
+  return {
+    missing: BUCKET_PREREQUISITES.filter(({ kind, name }) => !present.has(`${kind}\t${name}`)).map(
+      ({ name }) => name,
+    ),
+  };
+}
+
 function parseBackfill(stdout) {
   const lines = linesOf(stdout);
   if (lines.length !== 1) throw safeError('invalid_response');
@@ -419,6 +458,7 @@ const PARSERS = Object.freeze({
   marker: parseMarker,
   extensions: parseExtensions,
   schema: parseSchema,
+  bucket: parseBucket,
   backfill: parseBackfill,
 });
 

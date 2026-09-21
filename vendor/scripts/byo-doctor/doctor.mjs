@@ -1,6 +1,6 @@
 import { readdir } from 'node:fs/promises';
 import { FUNCTION_SLUG } from '../byo-release/manifest.mjs';
-import { SCHEMA_PREREQUISITES } from './schema.mjs';
+import { BUCKET_PREREQUISITES, SCHEMA_PREREQUISITES } from './schema.mjs';
 
 export const REQUIRED_FUNCTIONS = Object.freeze([
   'delete-account',
@@ -27,6 +27,7 @@ const failureCodes = new Set([
   'missing_prerequisite',
 ]);
 const prerequisiteNames = new Set(SCHEMA_PREREQUISITES.map((p) => p.name));
+const bucketNames = new Set(BUCKET_PREREQUISITES.map((p) => p.name));
 const result = (status, code, details) => ({ status, code, ...(details ? { details } : {}) });
 const invalid = () => {
   throw Object.assign(new Error('Invalid diagnostic response.'), { code: 'invalid_response' });
@@ -247,6 +248,24 @@ export async function runDoctor(
         },
         timeoutMs,
       ),
+    // The image-attachment bucket (plan D12). Separate from `schema` because it
+    // is a row rather than a catalog object and reading it needs BYPASSRLS; a
+    // role without it loses this line and keeps the whole inventory.
+    bucket: () =>
+      check(
+        read('bucket'),
+        (value) => {
+          if (!Array.isArray(value?.missing) || value.missing.some((name) => !bucketNames.has(name)))
+            invalid();
+          const missing = [...new Set(value.missing)].sort();
+          return result(
+            missing.length ? 'unhealthy' : 'healthy',
+            missing.length ? 'bucket_missing' : 'buckets_present',
+            { missing, checked: BUCKET_PREREQUISITES.length },
+          );
+        },
+        timeoutMs,
+      ),
     backfill: () =>
       check(
         read('backfill'),
@@ -391,6 +410,12 @@ export function formatReport(report) {
     if (name === 'schema') {
       lines.push(`  ${d.checked} structural prerequisites checked`);
       for (const missing of d.missing) lines.push(`  Missing or disabled: ${missing}`);
+    }
+    if (name === 'bucket') {
+      lines.push(`  ${d.checked} storage bucket prerequisite checked`);
+      for (const missing of d.missing) {
+        lines.push(`  Missing: ${missing} — images cannot be saved on this project`);
+      }
     }
     if (name === 'backfill') lines.push(`  ${d.eligibleNotes} eligible notes (includes Trash)`);
     if (name === 'functions')
