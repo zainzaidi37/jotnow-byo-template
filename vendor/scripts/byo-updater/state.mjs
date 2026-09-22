@@ -302,7 +302,7 @@ async function createOwnedDirectoryLock(directory, existsMessage) {
   try {
     await mkdir(directory, { mode: 0o700 });
   } catch (error) {
-    if (error?.code === 'EEXIST') throw new Error(existsMessage);
+    if (error?.code === 'EEXIST') throw new Error(existsMessage, { cause: error });
     throw error;
   }
   const record = ownerRecord();
