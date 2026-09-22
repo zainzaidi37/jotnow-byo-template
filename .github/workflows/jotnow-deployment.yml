@@ -86,7 +86,7 @@ jobs:
           chmod +x "$tools/supabase/supabase" "$tools/supabase/supabase-go"
           "$tools/supabase/supabase" --version | grep -F '2.111.0'
           pnpm install --frozen-lockfile --ignore-scripts
-          "$GITHUB_WORKSPACE/node_modules/.bin/wrangler" --version | grep -F '4.110.0'
+          "$GITHUB_WORKSPACE/node_modules/.bin/wrangler" --version | grep -F '4.136.1'
           test -x "$(command -v psql)"
 
       - name: Run read-only doctor
