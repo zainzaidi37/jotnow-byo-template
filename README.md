@@ -272,7 +272,7 @@ license key is refused before any provider request.
 - **Recovery records:** the configuration branch stores progress. `.jotnow/instance.json`
   holds a SHA-256 key fingerprint, product ownership, and lifecycle state;
   the license key stays in GitHub Secrets.
-- **Tooling:** Supabase CLI 2.111.0, pnpm 10.15.1, and Wrangler 4.110.0 are
+- **Tooling:** Supabase CLI 2.111.0, pnpm 10.15.1, and Wrangler 4.136.1 are
   installed before credentials are exposed. The frozen install disables lifecycle
   scripts. Vendored updater, verifier, and Doctor code fetch no npm code.
 
