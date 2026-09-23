@@ -196,7 +196,11 @@ ones included, to use that mode.
 functions, and providers. **It diagnoses problems; it does not repair them.**
 
 Setup uses the core diagnostic result: schema and function deployment checks
-must pass, while optional AI diagnostics do not block installation. This does
+must pass, while optional AI diagnostics do not block installation. Image
+attachments are checked too, and they do not block setup either. Their storage
+bucket and usage function come with a later release than the one setup installs
+first. Until you update to a release that includes them, the full report names
+them missing while the core result stays healthy. This does
 not prove your login, end-to-end sync, or provider health; finish the app steps
 above. Standalone Doctor retains the detailed results for all requested checks.
 
