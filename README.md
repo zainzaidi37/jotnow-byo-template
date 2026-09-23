@@ -18,7 +18,8 @@ web app, or host the web app on your own Cloudflare Pages project.
    [Authentication](#authentication)
 4. **Set up Jotnow:** open **Actions → Jotnow deployment → Run workflow**,
    select `setup`, and wait for it to finish. Setup links your license when
-   needed, installs the backend, and runs core diagnostics.
+   needed, installs the backend, runs core diagnostics, and then updates to
+   the newest release.
 5. **Create your confirmed account in Supabase Auth, then open the app.**
    On `byo.jotnow.dev`, enter your receipt's license key at
    the host's access page first. Then enter your Supabase project URL and public
@@ -30,6 +31,17 @@ OpenAI and Voyage credentials are optional. Add them later using
 
 Run `update` again for later releases. If a run fails, follow
 [the recovery guidance](#recovering-a-failed-run).
+
+Setup and `update` are each **one** workflow run. The workflow installs one
+release at a time until the deployment is on the newest release (or on
+`JOTNOW_RELEASE_PIN`), then stops. A run stops early at an error, after ten
+releases, or once 20 minutes have passed (a release already started still
+finishes); the last lines of its output say where it stopped. A run that
+stops at the ten-release or 20-minute limit is marked failed on purpose,
+even though every release it installed succeeded, so it is not mistaken
+for a finished run: run `update` again to continue. Stepping through
+releases is the workflow's job: a local `pnpm update`, and the
+`backend-only` operation, move one release.
 
 ## Setup details
 
@@ -136,7 +148,8 @@ that changing secrets does not require redeploying functions.
 
 ## Updates and maintenance
 
-- Run `update` to install newer releases. Each update also runs embedding
+- Run `update` to install newer releases. One run installs each newer
+  release in turn and stops when current. Each update also runs embedding
   backfill, even when up to date or pinned. You can run `backfill` separately.
 - Keep backups; they are recommended, not a deployment requirement.
 - If an update fails, retry the **same release and mode** after fixing the cause.
@@ -173,7 +186,8 @@ on:
 
 The workflow already handles the rest: a scheduled event carries no operation
 input, so it selects `update` explicitly and skips the dispatch-only `doctor`
-step. Nothing else needs changing.
+step. Nothing else needs changing. A scheduled run installs at most one release;
+only a run you dispatch steps through several.
 
 Before you turn it on, know what an unattended `update` does. It applies
 migrations and deploys functions against your Supabase project using your
@@ -197,10 +211,11 @@ functions, and providers. **It diagnoses problems; it does not repair them.**
 
 Setup uses the core diagnostic result: schema and function deployment checks
 must pass, while optional AI diagnostics do not block installation. Image
-attachments are checked too, and they do not block setup either. Their storage
-bucket and usage function come with a later release than the one setup installs
-first. Until you update to a release that includes them, the full report names
-them missing while the core result stays healthy. This does
+attachments are not part of that core check, so they never block setup: setup
+runs it right after installing the first release in the chain, before it
+walks on to the newest, and that first release predates the attachments'
+storage bucket and usage function. A standalone `doctor` names them missing
+until the deployment is on a release that includes them. This does
 not prove your login, end-to-end sync, or provider health; finish the app steps
 above. Standalone Doctor retains the detailed results for all requested checks.
 
@@ -265,6 +280,25 @@ If this also fails, use the recovery steps above.
 Run `unlink` to release the linked instance. It saves progress before deactivation;
 retries validate ownership or zero active slots before completing. A different
 license key is refused before any provider request.
+
+**Lost your deployment repository?** The license allows one linked deployment,
+and `unlink` needs the instance ID stored in this repository. The repository
+also holds `.jotnow/deployment`, the record of what is installed in your
+Supabase project, and no command can take over an installed project without
+it. So the way back depends on what you have:
+
+- **A copy of the old repository** (a clone, a fork, a backup): restore it,
+  including `.jotnow/deployment`, and carry on with `update` as before.
+- **No copy, and you want to keep your existing Supabase project and its
+  notes:** email hello@jotnow.dev with your order number. Do not run `setup`
+  against that project from a new repository: it refuses a project that
+  already holds Jotnow, after spending your license's activation.
+- **No copy, starting over on a new, empty Supabase project:** free the old
+  activation first — open Lemon Squeezy's
+  [My Orders](https://app.lemonsqueezy.com/my-orders) page, open the order and
+  its license, and deactivate the old activation if the page offers that, or
+  email hello@jotnow.dev with your order number — then run `setup` in a new
+  repository created from this template.
 
 ## Technical details
 

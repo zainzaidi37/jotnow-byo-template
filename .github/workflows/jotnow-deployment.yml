@@ -48,7 +48,11 @@ concurrency:
 jobs:
   operate:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    # Setup and a dispatched update walk the release chain (scripts/walk.mjs):
+    # no new release starts after 20 minutes of walking, but one started just
+    # before that must still finish (a migration push plus bounded function
+    # deploys), after tool preparation and, for setup, the first install.
+    timeout-minutes: 90
     steps:
       - name: Check out the configuration branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -106,6 +110,7 @@ jobs:
         shell: bash
         env:
           OPERATION: ${{ github.event_name == 'schedule' && 'update' || inputs.operation }}
+          EVENT_NAME: ${{ github.event_name }}
           JOTNOW_DEPLOYMENT_MODE: ${{ vars.JOTNOW_DEPLOYMENT_MODE }}
           MIGRATION_VERSION: ${{ inputs.migration_version }}
           MIGRATION_STATUS: ${{ inputs.migration_status }}
@@ -139,9 +144,17 @@ jobs:
           case "$OPERATION" in
             setup)
               node vendor/scripts/byo-updater/customer-cli.mjs setup
+              node scripts/walk.mjs
               ;;
             update)
-              node vendor/scripts/byo-updater/customer-cli.mjs update
+              # A dispatch walks to the newest release, one release per hop.
+              # A scheduled run moves one release, so an unattended run never
+              # applies several releases in a row.
+              if [[ "$EVENT_NAME" == 'schedule' ]]; then
+                node vendor/scripts/byo-updater/customer-cli.mjs update
+              else
+                node scripts/walk.mjs
+              fi
               ;;
             backend-only) node vendor/scripts/byo-updater/customer-cli.mjs update backend-only ;;
             link)
