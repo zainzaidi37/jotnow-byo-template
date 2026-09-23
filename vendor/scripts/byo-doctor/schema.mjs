@@ -90,7 +90,6 @@ const functions = [
   'supersede_recall_runs(uuid)',
   'restore_note_version(uuid)',
   'merge_tags(uuid,uuid[])',
-  'attachment_usage()',
 ];
 
 const triggers = [
@@ -117,6 +116,28 @@ export const SCHEMA_PREREQUISITES = Object.freeze(
     ...triggers.map((name) => ({ kind: 'trigger', name: `public.${name}` })),
     { kind: 'extension', name: 'extensions.vector' },
   ].map(Object.freeze),
+);
+
+/**
+ * Catalog objects a feature needs that the fresh-install base release does not
+ * create, read by the same catalog query as the inventory above and reported by
+ * a check of its own (`featureSchema`) that is outside core readiness.
+ *
+ * Nothing may join the core inventory unless the base release creates it.
+ * `setup` runs the doctor with `--core` straight after its first install, which
+ * is always the base release (`selectRelease` starts a fresh install at the one
+ * release with a null `minimumPreviousRelease`), and this file is vendored into
+ * `customer-template/vendor/`, where it outlives the release it was written
+ * beside. An object a later release adds goes here instead, or every new
+ * operator is refused at `setup` (issue #608). `fresh-install.test.mjs` holds
+ * the core inventory to the base release's migrations.
+ *
+ * `attachment_usage()` arrives with the image-attachments migration. The app
+ * already fails soft without it (`PGRST202` is `missing_migration`), so its
+ * absence costs image uploads, not the deployment.
+ */
+export const FEATURE_SCHEMA_PREREQUISITES = Object.freeze(
+  [{ kind: 'function', name: 'public.attachment_usage()' }].map(Object.freeze),
 );
 
 /**

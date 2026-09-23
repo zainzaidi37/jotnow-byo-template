@@ -2,7 +2,11 @@ import { spawn } from 'node:child_process';
 import { delimiter, isAbsolute } from 'node:path';
 import { Buffer } from 'node:buffer';
 
-import { BUCKET_PREREQUISITES, SCHEMA_PREREQUISITES } from './schema.mjs';
+import {
+  BUCKET_PREREQUISITES,
+  FEATURE_SCHEMA_PREREQUISITES,
+  SCHEMA_PREREQUISITES,
+} from './schema.mjs';
 
 const MAX_STDOUT_BYTES = 1024 * 1024;
 const MAX_STDERR_BYTES = 64 * 1024;
@@ -12,6 +16,7 @@ const CHECK_NAMES = new Set([
   'marker',
   'extensions',
   'schema',
+  'featureSchema',
   'bucket',
   'backfill',
 ]);
@@ -86,6 +91,12 @@ WHERE n.deleted_at IS NULL
     SELECT 1 FROM public.note_embeddings ne WHERE ne.note_id = n.id)
   AND NOT EXISTS (
     SELECT 1 FROM public.embedding_jobs j WHERE j.note_id = n.id)`;
+
+// The same catalog read, run again for the objects a feature needs that the
+// fresh-install base release does not create (`schema.mjs`,
+// FEATURE_SCHEMA_PREREQUISITES). Its own session so a failure here costs only
+// that line, and catalog-only so it needs no more privilege than `schema`.
+QUERIES.featureSchema = QUERIES.schema;
 
 QUERIES.backfill = `WITH scope AS (
   SELECT pg_catalog.count(*) = 3 AND pg_catalog.bool_and(
@@ -396,25 +407,27 @@ function parseExtensions(stdout) {
   });
 }
 
-function parseSchema(stdout) {
-  const present = new Set();
-  for (const line of linesOf(stdout)) {
-    const fields = line.split('\t');
-    if (
-      fields.length !== 2 ||
-      !['table', 'column', 'function', 'trigger', 'extension'].includes(fields[0]) ||
-      fields[1].length === 0 ||
-      fields[1].length > 512 ||
-      /[^\x20-\x7e]/.test(fields[1])
-    ) {
-      throw safeError('invalid_response');
+function catalogInventory(prerequisites) {
+  return (stdout) => {
+    const present = new Set();
+    for (const line of linesOf(stdout)) {
+      const fields = line.split('\t');
+      if (
+        fields.length !== 2 ||
+        !['table', 'column', 'function', 'trigger', 'extension'].includes(fields[0]) ||
+        fields[1].length === 0 ||
+        fields[1].length > 512 ||
+        /[^\x20-\x7e]/.test(fields[1])
+      ) {
+        throw safeError('invalid_response');
+      }
+      present.add(`${fields[0]}\t${fields[1]}`);
     }
-    present.add(`${fields[0]}\t${fields[1]}`);
-  }
-  return {
-    missing: SCHEMA_PREREQUISITES.filter(({ kind, name }) => !present.has(`${kind}\t${name}`)).map(
-      ({ name }) => name,
-    ),
+    return {
+      missing: prerequisites
+        .filter(({ kind, name }) => !present.has(`${kind}\t${name}`))
+        .map(({ name }) => name),
+    };
   };
 }
 
@@ -457,7 +470,8 @@ const PARSERS = Object.freeze({
   epoch: parseEpoch,
   marker: parseMarker,
   extensions: parseExtensions,
-  schema: parseSchema,
+  schema: catalogInventory(SCHEMA_PREREQUISITES),
+  featureSchema: catalogInventory(FEATURE_SCHEMA_PREREQUISITES),
   bucket: parseBucket,
   backfill: parseBackfill,
 });

@@ -1,6 +1,10 @@
 import { readdir } from 'node:fs/promises';
 import { FUNCTION_SLUG } from '../byo-release/manifest.mjs';
-import { BUCKET_PREREQUISITES, SCHEMA_PREREQUISITES } from './schema.mjs';
+import {
+  BUCKET_PREREQUISITES,
+  FEATURE_SCHEMA_PREREQUISITES,
+  SCHEMA_PREREQUISITES,
+} from './schema.mjs';
 
 export const REQUIRED_FUNCTIONS = Object.freeze([
   'delete-account',
@@ -27,6 +31,7 @@ const failureCodes = new Set([
   'missing_prerequisite',
 ]);
 const prerequisiteNames = new Set(SCHEMA_PREREQUISITES.map((p) => p.name));
+const featureNames = new Set(FEATURE_SCHEMA_PREREQUISITES.map((p) => p.name));
 const bucketNames = new Set(BUCKET_PREREQUISITES.map((p) => p.name));
 const result = (status, code, details) => ({ status, code, ...(details ? { details } : {}) });
 const invalid = () => {
@@ -248,6 +253,27 @@ export async function runDoctor(
         },
         timeoutMs,
       ),
+    // Catalog objects a later release adds (`schema.mjs`,
+    // FEATURE_SCHEMA_PREREQUISITES). Outside core readiness because `setup`
+    // runs the core check on the base release, which does not create them.
+    featureSchema: () =>
+      check(
+        read('featureSchema'),
+        (value) => {
+          if (
+            !Array.isArray(value?.missing) ||
+            value.missing.some((name) => !featureNames.has(name))
+          )
+            invalid();
+          const missing = [...new Set(value.missing)].sort();
+          return result(
+            missing.length ? 'unhealthy' : 'healthy',
+            missing.length ? 'feature_prerequisite_missing' : 'feature_prerequisites_present',
+            { missing, checked: FEATURE_SCHEMA_PREREQUISITES.length },
+          );
+        },
+        timeoutMs,
+      ),
     // The image-attachment bucket (plan D12). Separate from `schema` because it
     // is a row rather than a catalog object and reading it needs BYPASSRLS; a
     // role without it loses this line and keeps the whole inventory.
@@ -255,7 +281,10 @@ export async function runDoctor(
       check(
         read('bucket'),
         (value) => {
-          if (!Array.isArray(value?.missing) || value.missing.some((name) => !bucketNames.has(name)))
+          if (
+            !Array.isArray(value?.missing) ||
+            value.missing.some((name) => !bucketNames.has(name))
+          )
             invalid();
           const missing = [...new Set(value.missing)].sort();
           return result(
@@ -410,6 +439,14 @@ export function formatReport(report) {
     if (name === 'schema') {
       lines.push(`  ${d.checked} structural prerequisites checked`);
       for (const missing of d.missing) lines.push(`  Missing or disabled: ${missing}`);
+    }
+    if (name === 'featureSchema') {
+      lines.push(`  ${d.checked} feature prerequisites checked`);
+      for (const missing of d.missing) {
+        lines.push(
+          `  Missing: ${missing} — the feature that needs it refuses until the migration that creates it is applied`,
+        );
+      }
     }
     if (name === 'bucket') {
       lines.push(`  ${d.checked} storage bucket prerequisite checked`);
