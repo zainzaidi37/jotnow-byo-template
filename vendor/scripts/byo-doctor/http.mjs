@@ -313,7 +313,7 @@ export function createHttpAdapters({
           accept: 'application/json',
           'content-type': 'application/json',
         },
-        body: JSON.stringify({ input: 'jotnow provider check', model: 'voyage-4-lite' }),
+        body: JSON.stringify({ input: 'kinjot provider check', model: 'voyage-4-lite' }),
       });
     };
   }

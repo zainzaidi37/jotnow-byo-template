@@ -54,7 +54,7 @@ const columns = {
 };
 const functions = [
   'sync_watermark()',
-  'jotnow_schema_compatibility()',
+  'kinjot_schema_compatibility()',
   'is_self_hosted()',
   'backfill_self_hosted_embeddings()',
   'match_notes_for_recall(extensions.vector,integer)',

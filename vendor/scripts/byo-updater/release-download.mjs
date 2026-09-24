@@ -20,13 +20,13 @@ function header(response, name) {
 
 function selection(response) {
   const value = {
-    version: header(response, 'X-Jotnow-Release-Version'),
-    sequence: Number(header(response, 'X-Jotnow-Release-Sequence')),
-    sourceCommit: header(response, 'X-Jotnow-Release-Source-Commit'),
-    clientCompatibilityEpoch: Number(header(response, 'X-Jotnow-Release-Compatibility-Epoch')),
-    manifestSha256: header(response, 'X-Jotnow-Manifest-Sha256'),
-    archiveSha256: header(response, 'X-Jotnow-Archive-Sha256'),
-    archiveBytes: Number(header(response, 'X-Jotnow-Archive-Bytes')),
+    version: header(response, 'X-Kinjot-Release-Version'),
+    sequence: Number(header(response, 'X-Kinjot-Release-Sequence')),
+    sourceCommit: header(response, 'X-Kinjot-Release-Source-Commit'),
+    clientCompatibilityEpoch: Number(header(response, 'X-Kinjot-Release-Compatibility-Epoch')),
+    manifestSha256: header(response, 'X-Kinjot-Manifest-Sha256'),
+    archiveSha256: header(response, 'X-Kinjot-Archive-Sha256'),
+    archiveBytes: Number(header(response, 'X-Kinjot-Archive-Bytes')),
   };
   if (
     !VERSION.test(value.version) ||

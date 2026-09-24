@@ -13,7 +13,7 @@ function safeExecutable(value) {
   return value;
 }
 
-// Database URLs only, which is why every refusal here names `JOTNOW_DATABASE_URL`.
+// Database URLs only, which is why every refusal here names `KINJOT_DATABASE_URL`.
 // `databaseConnection` is the sole caller and the `web` branch has none today. A
 // future web-URL caller needs its own reason rather than this one's copy.
 function safeUrl(value, { web = false } = {}) {
@@ -81,7 +81,7 @@ export function databaseConnection(databaseUrl, projectRef, timeoutMs) {
     psqlEnv: Object.freeze({
       LANG: 'C',
       LC_ALL: 'C',
-      PGAPPNAME: 'jotnow-byo-updater',
+      PGAPPNAME: 'kinjot-byo-updater',
       PGCONNECT_TIMEOUT: String(Math.max(1, Math.ceil(timeoutMs / 1000))),
       PGDATABASE: decoded(url.pathname.slice(1)),
       PGHOST: url.hostname,
@@ -139,7 +139,9 @@ export function validateOperatorConfig(value, { mode = 'full', databaseOnly = fa
   }
   if (mode === 'full' && !/^[a-f0-9]{32}$/.test(cloudflareAccountId)) {
     throw new UpdaterRefusal(
-      cloudflareAccountId === undefined || cloudflareAccountId === null || cloudflareAccountId === ''
+      cloudflareAccountId === undefined ||
+        cloudflareAccountId === null ||
+        cloudflareAccountId === ''
         ? 'cloudflare_account_missing'
         : 'cloudflare_account_invalid',
     );

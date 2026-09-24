@@ -43,7 +43,8 @@ const MAX_SIGNATURE_BYTES = 20 * 1024;
 
 function bytes(value, label) {
   if (typeof value === 'string') return Buffer.from(value, 'utf8');
-  if (ArrayBuffer.isView(value)) return Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+  if (ArrayBuffer.isView(value))
+    return Buffer.from(value.buffer, value.byteOffset, value.byteLength);
   throw new Error(`${label} must be a string or byte array`);
 }
 
@@ -65,7 +66,8 @@ function canonicalBase64(value, length, label) {
     throw new Error(`${label} must be canonical base64`);
   }
   const decoded = Buffer.from(value, 'base64');
-  if (decoded.length !== length || decoded.toString('base64') !== value) throw new Error(`${label} has an invalid encoded length`);
+  if (decoded.length !== length || decoded.toString('base64') !== value)
+    throw new Error(`${label} has an invalid encoded length`);
   return decoded;
 }
 
@@ -78,20 +80,24 @@ function deepFreeze(value) {
 }
 
 export function parseMinisignSignature(input) {
-  const inputLength = typeof input === 'string' ? Buffer.byteLength(input, 'utf8') : input?.byteLength;
+  const inputLength =
+    typeof input === 'string' ? Buffer.byteLength(input, 'utf8') : input?.byteLength;
   if (!Number.isSafeInteger(inputLength) || inputLength > MAX_SIGNATURE_BYTES) {
     throw new Error('minisign signature is too large');
   }
   const source = decodeText(input, 'minisign signature');
   const normalized = source.replaceAll('\r\n', '\n');
-  if (normalized.includes('\r')) throw new Error('minisign signature contains an invalid line ending');
+  if (normalized.includes('\r'))
+    throw new Error('minisign signature contains an invalid line ending');
   const lines = normalized.split('\n');
   if (lines.at(-1) === '') lines.pop();
   if (lines.length !== 4 || lines.some((line) => line.length > 4096)) {
     throw new Error('minisign signature must contain exactly four bounded lines');
   }
-  if (!lines[0].startsWith('untrusted comment: ')) throw new Error('minisign signature has no untrusted comment');
-  if (!lines[2].startsWith('trusted comment: ')) throw new Error('minisign signature has no trusted comment');
+  if (!lines[0].startsWith('untrusted comment: '))
+    throw new Error('minisign signature has no untrusted comment');
+  if (!lines[2].startsWith('trusted comment: '))
+    throw new Error('minisign signature has no trusted comment');
   const signaturePacket = canonicalBase64(lines[1], 74, 'minisign signature packet');
   if (!signaturePacket.subarray(0, 2).equals(SIGNATURE_ALGORITHM)) {
     throw new Error('legacy or unknown minisign signature format is refused; expected ED');
@@ -116,7 +122,7 @@ function publicKeyObject(rawPublicKey) {
 }
 
 export function trustedCommentForManifest(manifest) {
-  return `jotnow release ${manifest.release.version} sequence ${manifest.release.sequence} key ${manifest.release.signingKeyId}`;
+  return `kinjot release ${manifest.release.version} sequence ${manifest.release.sequence} key ${manifest.release.signingKeyId}`;
 }
 
 export function verifySignedManifest({
@@ -141,7 +147,8 @@ export function verifySignedManifest({
   }
   const key = publicKeyObject(trustedKey.publicKey);
   const digest = createHash('blake2b512').update(message).digest();
-  if (!verify(null, digest, key, parsedSignature.signature)) throw new Error('manifest signature verification failed');
+  if (!verify(null, digest, key, parsedSignature.signature))
+    throw new Error('manifest signature verification failed');
   const globalMessage = Buffer.concat([
     parsedSignature.signature,
     Buffer.from(parsedSignature.trustedComment, 'utf8'),
@@ -152,7 +159,8 @@ export function verifySignedManifest({
 
   // Manifest fields and hashes become trusted only after both signatures pass.
   const parsedManifest = reader.validate(untrustedManifest);
-  if (untrustedManifest.signature?.algorithm !== 'minisign') throw new Error('signed manifest must declare minisign');
+  if (untrustedManifest.signature?.algorithm !== 'minisign')
+    throw new Error('signed manifest must declare minisign');
   // The binding. `reader.encode` re-serializes the object the parse produced;
   // equality with the signed message is what makes the parsed value — not just
   // the bytes — authenticated. Without it a tolerant reader would accept bytes
@@ -171,18 +179,22 @@ export function verifySignedManifest({
     trustedComment: parsedSignature.trustedComment,
   });
   if (reader.adoptable === true) {
-    VERIFIED_RELEASES.set(result, Object.freeze({
-      manifest: authenticatedManifest,
-      publicKey: trustedKey.encoded,
-    }));
+    VERIFIED_RELEASES.set(
+      result,
+      Object.freeze({
+        manifest: authenticatedManifest,
+        publicKey: trustedKey.encoded,
+      }),
+    );
   }
   return result;
 }
 
 export function adoptTrustList({ verifiedRelease, currentTrustList, candidateTrustListBytes }) {
-  const authenticated = verifiedRelease !== null && typeof verifiedRelease === 'object'
-    ? VERIFIED_RELEASES.get(verifiedRelease)
-    : undefined;
+  const authenticated =
+    verifiedRelease !== null && typeof verifiedRelease === 'object'
+      ? VERIFIED_RELEASES.get(verifiedRelease)
+      : undefined;
   if (!authenticated) throw new Error('trust-list adoption requires an authenticated release');
   const current = parseTrustList(currentTrustList);
   const currentSigner = resolveTrustedKey(current, verifiedRelease.signingKeyId);

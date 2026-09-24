@@ -23,7 +23,7 @@ const REFUSAL_DEFINITIONS = Object.freeze({
   initial_backend_not_empty: Object.freeze({
     error: 'initial deployment requires a verified empty backend',
     operator:
-      "Initial installation requires an empty Jotnow backend. Use the updater for the backend's installed release or a fresh Supabase project.",
+      "Initial installation requires an empty Kinjot backend. Use the updater for the backend's installed release or a fresh Supabase project.",
   }),
   database_history_unavailable: Object.freeze({
     error: 'database migration history is unavailable',
@@ -69,24 +69,24 @@ const REFUSAL_DEFINITIONS = Object.freeze({
     // operator had run something else.
     error: 'license key is missing',
     operator:
-      'Setup needs the JOTNOW_LICENSE_KEY repository secret. Add it under Settings → Secrets and variables → Actions, then run setup again.',
+      'Setup needs the KINJOT_LICENSE_KEY repository secret. Add it under Settings → Secrets and variables → Actions, then run setup again.',
     operatorByCommand: Object.freeze({
-      link: 'Link needs the JOTNOW_LICENSE_KEY repository secret. Add it under Settings → Secrets and variables → Actions, then run link again.',
+      link: 'Link needs the KINJOT_LICENSE_KEY repository secret. Add it under Settings → Secrets and variables → Actions, then run link again.',
       unlink:
-        'Unlink needs the JOTNOW_LICENSE_KEY repository secret. Add it under Settings → Secrets and variables → Actions, then run unlink again.',
+        'Unlink needs the KINJOT_LICENSE_KEY repository secret. Add it under Settings → Secrets and variables → Actions, then run unlink again.',
       update:
-        'Update needs the JOTNOW_LICENSE_KEY repository secret. Add it under Settings → Secrets and variables → Actions, then run update again.',
+        'Update needs the KINJOT_LICENSE_KEY repository secret. Add it under Settings → Secrets and variables → Actions, then run update again.',
     }),
   }),
   license_key_invalid: Object.freeze({
     error: 'license key is malformed',
     operator:
-      'JOTNOW_LICENSE_KEY is malformed. Copy the complete license key from your purchase receipt and try again.',
+      'KINJOT_LICENSE_KEY is malformed. Copy the complete license key from your purchase receipt and try again.',
   }),
   database_url_missing: Object.freeze({
     error: 'database url missing',
     operator:
-      "Setup needs the JOTNOW_DATABASE_URL repository secret. Copy the connection URL from your Supabase project's Connect dialog, then run setup again.",
+      "Setup needs the KINJOT_DATABASE_URL repository secret. Copy the connection URL from your Supabase project's Connect dialog, then run setup again.",
   }),
   management_token_missing: Object.freeze({
     error: 'management token missing',
@@ -96,36 +96,36 @@ const REFUSAL_DEFINITIONS = Object.freeze({
   project_ref_missing: Object.freeze({
     error: 'project ref missing',
     operator:
-      'Setup needs the JOTNOW_SUPABASE_PROJECT_REF repository variable. Add your Supabase project reference, then run setup again.',
+      'Setup needs the KINJOT_SUPABASE_PROJECT_REF repository variable. Add your Supabase project reference, then run setup again.',
   }),
   project_ref_invalid: Object.freeze({
     error: 'project ref invalid',
     operator:
-      "JOTNOW_SUPABASE_PROJECT_REF is not a valid Supabase project reference. Copy it from your project's URL or its Connect dialog.",
+      "KINJOT_SUPABASE_PROJECT_REF is not a valid Supabase project reference. Copy it from your project's URL or its Connect dialog.",
   }),
   database_url_invalid: Object.freeze({
     error: 'database url invalid',
     operator:
-      "JOTNOW_DATABASE_URL is not a valid Supabase Postgres connection URL. Copy it from your project's Connect dialog.",
+      "KINJOT_DATABASE_URL is not a valid Supabase Postgres connection URL. Copy it from your project's Connect dialog.",
   }),
   database_url_host_mismatch: Object.freeze({
     error: 'database url host mismatch',
     operator:
-      'The hostname in JOTNOW_DATABASE_URL does not match JOTNOW_SUPABASE_PROJECT_REF. Copy the connection URL for that project.',
+      'The hostname in KINJOT_DATABASE_URL does not match KINJOT_SUPABASE_PROJECT_REF. Copy the connection URL for that project.',
   }),
   database_url_direct_username_invalid: Object.freeze({
     error: 'database url direct username invalid',
-    operator: 'JOTNOW_DATABASE_URL must use the username postgres with a direct connection.',
+    operator: 'KINJOT_DATABASE_URL must use the username postgres with a direct connection.',
   }),
   database_url_pooler_username_invalid: Object.freeze({
     error: 'database url pooler username invalid',
     operator:
-      'JOTNOW_DATABASE_URL must use the username postgres.<JOTNOW_SUPABASE_PROJECT_REF> with a pooler connection.',
+      'KINJOT_DATABASE_URL must use the username postgres.<KINJOT_SUPABASE_PROJECT_REF> with a pooler connection.',
   }),
   database_direct_host_unreachable: Object.freeze({
     error: 'direct database host is unreachable and no pooler endpoint resolved',
     operator:
-      "The direct database host db.<JOTNOW_SUPABASE_PROJECT_REF>.supabase.co could not be reached, and this project's session pooler could not be resolved to retry. Supabase publishes the direct host over IPv6 only, and many CI runners are IPv4-only. Copy the session pooler URL on port 5432 from your project's Connect dialog into JOTNOW_DATABASE_URL, then run this workflow again.",
+      "The direct database host db.<KINJOT_SUPABASE_PROJECT_REF>.supabase.co could not be reached, and this project's session pooler could not be resolved to retry. Supabase publishes the direct host over IPv6 only, and many CI runners are IPv4-only. Copy the session pooler URL on port 5432 from your project's Connect dialog into KINJOT_DATABASE_URL, then run this workflow again.",
   }),
   cloudflare_token_missing: Object.freeze({
     error: 'cloudflare token missing',
@@ -145,16 +145,16 @@ const REFUSAL_DEFINITIONS = Object.freeze({
   pages_project_missing: Object.freeze({
     error: 'pages project missing',
     operator:
-      'Full mode needs the JOTNOW_PAGES_PROJECT repository variable, naming a Direct Upload Pages project that already exists.',
+      'Full mode needs the KINJOT_PAGES_PROJECT repository variable, naming a Direct Upload Pages project that already exists.',
   }),
   pages_branch_invalid: Object.freeze({
     error: 'pages branch invalid',
     operator:
-      'JOTNOW_PAGES_BRANCH is not a valid branch name for a Pages deployment. Use a name of lowercase letters, digits and hyphens, with no slashes.',
+      'KINJOT_PAGES_BRANCH is not a valid branch name for a Pages deployment. Use a name of lowercase letters, digits and hyphens, with no slashes.',
   }),
   deployment_mode_invalid: Object.freeze({
-    error: 'JOTNOW_DEPLOYMENT_MODE must be full or backend-only',
-    operator: 'JOTNOW_DEPLOYMENT_MODE must be full or backend-only.',
+    error: 'KINJOT_DEPLOYMENT_MODE must be full or backend-only',
+    operator: 'KINJOT_DEPLOYMENT_MODE must be full or backend-only.',
   }),
   enrollment_disabled: Object.freeze({
     error: 'enrollment disabled',
@@ -190,7 +190,7 @@ const REFUSAL_DEFINITIONS = Object.freeze({
   recovery_target_mismatch: Object.freeze({
     error: 'the configured pin differs from the incomplete recovery target',
     operator:
-      'An incomplete update must be recovered with its original release. Clear JOTNOW_RELEASE_PIN or set it to that release.',
+      'An incomplete update must be recovered with its original release. Clear KINJOT_RELEASE_PIN or set it to that release.',
   }),
   recovery_release_unavailable: Object.freeze({
     error: 'release service cannot satisfy the incomplete recovery target',
@@ -224,7 +224,7 @@ const REFUSAL_DEFINITIONS = Object.freeze({
     // so the one honest outcome is to stop and say which side is behind.
     error: 'installed release manifest uses a schema this bootstrap cannot read',
     operator:
-      "The installed release's manifest is a newer schema than this repository's bootstrap can read. Re-create the deployment repository from the current template, carry over .jotnow/deployment and your secrets, then run update again.",
+      "The installed release's manifest is a newer schema than this repository's bootstrap can read. Re-create the deployment repository from the current template, carry over .kinjot/deployment and your secrets, then run update again.",
   }),
   core_diagnostics_failed: Object.freeze({
     error: 'core installation diagnostics did not pass; run Doctor for details',

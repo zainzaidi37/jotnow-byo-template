@@ -3,7 +3,7 @@
  *
  * The operator's workflow always runs `vendor/scripts/byo-updater/
  * customer-cli.mjs`, and nothing ever refreshes `vendor/` — the update
- * checkpoint stages only `.jotnow/deployment/**`. So whatever the vendored
+ * checkpoint stages only `.kinjot/deployment/**`. So whatever the vendored
  * bootstrap validates before it can delegate is frozen for every operator who
  * has already enrolled, and control cannot authenticate itself.
  *

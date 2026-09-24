@@ -413,7 +413,7 @@ export async function runDoctor(
 }
 
 export function formatReport(report) {
-  const lines = [`Jotnow doctor: ${report.status}`, 'Read-only diagnostics; no changes made.'];
+  const lines = [`Kinjot doctor: ${report.status}`, 'Read-only diagnostics; no changes made.'];
   if (report.readiness?.localAiProbe) {
     lines.push(
       `Locally supplied AI probe credentials: ${report.readiness.localAiProbe.credentials}; provider health: ${report.readiness.localAiProbe.health}`,

@@ -1,4 +1,4 @@
-name: Jotnow deployment
+name: Kinjot deployment
 
 on:
   workflow_dispatch:
@@ -42,7 +42,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: jotnow-deployment-${{ github.repository }}
+  group: kinjot-deployment-${{ github.repository }}
   cancel-in-progress: false
 
 jobs:
@@ -97,10 +97,10 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && inputs.operation == 'doctor'
         shell: bash
         env:
-          JOTNOW_DATABASE_URL: ${{ secrets.JOTNOW_DATABASE_URL }}
+          KINJOT_DATABASE_URL: ${{ secrets.KINJOT_DATABASE_URL }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          JOTNOW_SUPABASE_PROJECT_REF: ${{ vars.JOTNOW_SUPABASE_PROJECT_REF }}
-          JOTNOW_DOCTOR_TIMEOUT_MS: '15000'
+          KINJOT_SUPABASE_PROJECT_REF: ${{ vars.KINJOT_SUPABASE_PROJECT_REF }}
+          KINJOT_DOCTOR_TIMEOUT_MS: '15000'
         run: |
           set -euo pipefail
           node vendor/scripts/byo-updater/customer-cli.mjs doctor --core
@@ -111,29 +111,29 @@ jobs:
         env:
           OPERATION: ${{ github.event_name == 'schedule' && 'update' || inputs.operation }}
           EVENT_NAME: ${{ github.event_name }}
-          JOTNOW_DEPLOYMENT_MODE: ${{ vars.JOTNOW_DEPLOYMENT_MODE }}
+          KINJOT_DEPLOYMENT_MODE: ${{ vars.KINJOT_DEPLOYMENT_MODE }}
           MIGRATION_VERSION: ${{ inputs.migration_version }}
           MIGRATION_STATUS: ${{ inputs.migration_status }}
           REPAIR_CONFIRMATION: ${{ inputs.repair_confirmation }}
           LICENSE_INSTANCE_ID: ${{ inputs.license_instance_id }}
           GITHUB_PUSH_TOKEN: ${{ github.token }}
-          JOTNOW_LICENSE_KEY: ${{ secrets.JOTNOW_LICENSE_KEY }}
-          JOTNOW_DATABASE_URL: ${{ secrets.JOTNOW_DATABASE_URL }}
+          KINJOT_LICENSE_KEY: ${{ secrets.KINJOT_LICENSE_KEY }}
+          KINJOT_DATABASE_URL: ${{ secrets.KINJOT_DATABASE_URL }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          JOTNOW_SUPABASE_PROJECT_REF: ${{ vars.JOTNOW_SUPABASE_PROJECT_REF }}
-          JOTNOW_PAGES_PROJECT: ${{ vars.JOTNOW_PAGES_PROJECT }}
-          JOTNOW_PAGES_BRANCH: ${{ vars.JOTNOW_PAGES_BRANCH }}
-          JOTNOW_RELEASE_PIN: ${{ vars.JOTNOW_RELEASE_PIN }}
-          JOTNOW_INSTANCE_NAME: ${{ vars.JOTNOW_INSTANCE_NAME }}
-          JOTNOW_CONFIGURATION_BRANCH: ${{ github.ref_name }}
-          JOTNOW_UPDATER_STATE: ${{ github.workspace }}/.jotnow/deployment
-          JOTNOW_TRUST_LIST: ${{ github.workspace }}/trust/production-v1.json
-          JOTNOW_PSQL_BIN: /usr/bin/psql
-          JOTNOW_SUPABASE_BIN: ${{ github.workspace }}/.operator-tools/supabase/supabase
-          JOTNOW_WRANGLER_BIN: ${{ github.workspace }}/node_modules/.bin/wrangler
-          JOTNOW_UPDATE_TIMEOUT_MS: '600000'
+          KINJOT_SUPABASE_PROJECT_REF: ${{ vars.KINJOT_SUPABASE_PROJECT_REF }}
+          KINJOT_PAGES_PROJECT: ${{ vars.KINJOT_PAGES_PROJECT }}
+          KINJOT_PAGES_BRANCH: ${{ vars.KINJOT_PAGES_BRANCH }}
+          KINJOT_RELEASE_PIN: ${{ vars.KINJOT_RELEASE_PIN }}
+          KINJOT_INSTANCE_NAME: ${{ vars.KINJOT_INSTANCE_NAME }}
+          KINJOT_CONFIGURATION_BRANCH: ${{ github.ref_name }}
+          KINJOT_UPDATER_STATE: ${{ github.workspace }}/.kinjot/deployment
+          KINJOT_TRUST_LIST: ${{ github.workspace }}/trust/production-v1.json
+          KINJOT_PSQL_BIN: /usr/bin/psql
+          KINJOT_SUPABASE_BIN: ${{ github.workspace }}/.operator-tools/supabase/supabase
+          KINJOT_WRANGLER_BIN: ${{ github.workspace }}/node_modules/.bin/wrangler
+          KINJOT_UPDATE_TIMEOUT_MS: '600000'
         run: |
           set -euo pipefail
           auth="$(printf 'x-access-token:%s' "$GITHUB_PUSH_TOKEN" | base64 -w0)"

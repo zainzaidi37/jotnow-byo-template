@@ -7,15 +7,15 @@ import { createHttpAdapters } from './http.mjs';
 const help = `Usage: node scripts/byo-doctor/cli.mjs --migrations DIR --expected-epoch N [--json] [--timeout-ms N] [--allow-billable-voyage]
 
 Explicit environment inputs (no env files loaded automatically):
-  JOTNOW_DOCTOR_DB_URL             PostgreSQL connection (psql required)
-  JOTNOW_DOCTOR_PROJECT_REF        Supabase project for deployment metadata
-  JOTNOW_DOCTOR_MANAGEMENT_TOKEN   Supabase Management API token (list functions only)
-  JOTNOW_DOCTOR_OPENAI_KEY         Optional locally supplied OpenAI credential
-  JOTNOW_DOCTOR_VOYAGE_KEY         Optional locally supplied Voyage credential
+  KINJOT_DOCTOR_DB_URL             PostgreSQL connection (psql required)
+  KINJOT_DOCTOR_PROJECT_REF        Supabase project for deployment metadata
+  KINJOT_DOCTOR_MANAGEMENT_TOKEN   Supabase Management API token (list functions only)
+  KINJOT_DOCTOR_OPENAI_KEY         Optional locally supplied OpenAI credential
+  KINJOT_DOCTOR_VOYAGE_KEY         Optional locally supplied Voyage credential
 
 OpenAI uses GET /v1/models. Voyage requires --allow-billable-voyage for
 one tiny synthetic embedding request, which may incur provider charges.
-No credentials in flags. No Jotnow requests, uploads, repairs, or function invocations.
+No credentials in flags. No Kinjot requests, uploads, repairs, or function invocations.
 Exit: 0 all healthy; 1 confirmed unhealthy; 2 unavailable/not configured/config error.
 `;
 
@@ -50,17 +50,17 @@ export async function main(
       timeoutMs,
     };
     const http = createHttpAdapters({
-      projectRef: env.JOTNOW_DOCTOR_PROJECT_REF,
-      managementToken: env.JOTNOW_DOCTOR_MANAGEMENT_TOKEN,
-      openaiKey: env.JOTNOW_DOCTOR_OPENAI_KEY,
-      voyageKey: env.JOTNOW_DOCTOR_VOYAGE_KEY,
+      projectRef: env.KINJOT_DOCTOR_PROJECT_REF,
+      managementToken: env.KINJOT_DOCTOR_MANAGEMENT_TOKEN,
+      openaiKey: env.KINJOT_DOCTOR_OPENAI_KEY,
+      voyageKey: env.KINJOT_DOCTOR_VOYAGE_KEY,
       allowBillableVoyage: Boolean(options['--allow-billable-voyage']),
       timeoutMs,
     });
     let database;
-    if (env.JOTNOW_DOCTOR_DB_URL) {
+    if (env.KINJOT_DOCTOR_DB_URL) {
       try {
-        database = createDatabaseAdapter({ databaseUrl: env.JOTNOW_DOCTOR_DB_URL, timeoutMs });
+        database = createDatabaseAdapter({ databaseUrl: env.KINJOT_DOCTOR_DB_URL, timeoutMs });
       } catch {
         database = {
           read: async () => {
