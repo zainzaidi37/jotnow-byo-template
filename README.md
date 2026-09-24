@@ -1,6 +1,6 @@
-# Jotnow self-host deployment template
+# Kinjot self-host deployment template
 
-Use Jotnow with your own Supabase project and the included `byo.jotnow.dev`
+Use Kinjot with your own Supabase project and the included `byo.kinjot.com`
 web app, or host the web app on your own Cloudflare Pages project.
 
 > **Not yet on sale.** Setup, Link and Update work with a valid license key,
@@ -16,12 +16,12 @@ web app, or host the web app on your own Cloudflare Pages project.
    [Repository configuration](#repository-configuration)
 3. **Configure Supabase Auth** URLs and signup settings.
    [Authentication](#authentication)
-4. **Set up Jotnow:** open **Actions → Jotnow deployment → Run workflow**,
+4. **Set up Kinjot:** open **Actions → Kinjot deployment → Run workflow**,
    select `setup`, and wait for it to finish. Setup links your license when
    needed, installs the backend, runs core diagnostics, and then updates to
    the newest release.
 5. **Create your confirmed account in Supabase Auth, then open the app.**
-   On `byo.jotnow.dev`, enter your receipt's license key at
+   On `byo.kinjot.com`, enter your receipt's license key at
    the host's access page first. Then enter your Supabase project URL and public
    connection key, sign in and save a note. Open a second browser session to
    check sync. Never put your license or deployment secrets in a URL.
@@ -34,7 +34,7 @@ Run `update` again for later releases. If a run fails, follow
 
 Setup and `update` are each **one** workflow run. The workflow installs one
 release at a time until the deployment is on the newest release (or on
-`JOTNOW_RELEASE_PIN`), then stops. A run stops early at an error, after ten
+`KINJOT_RELEASE_PIN`), then stops. A run stops early at an error, after ten
 releases, or once 20 minutes have passed (a release already started still
 finishes); the last lines of its output say where it stopped. A run that
 stops at the ten-release or 20-minute limit is marked failed on purpose,
@@ -49,7 +49,7 @@ releases is the workflow's job: a local `pnpm update`, and the
 
 Choose your deployment mode:
 
-- **`backend-only`** (new-install default): use `byo.jotnow.dev` with your own
+- **`backend-only`** (new-install default): use `byo.kinjot.com` with your own
   Supabase backend. No Cloudflare credentials needed.
 - **`full`**: web app on your Cloudflare Pages project, backend on Supabase.
 
@@ -59,8 +59,8 @@ specified. Keep an existing explicit mode setting for subsequent updates.
 For `full`, create a **Direct Upload Cloudflare Pages project** before installing:
 
 - Use the account in `CLOUDFLARE_ACCOUNT_ID`.
-- Match its name to `JOTNOW_PAGES_PROJECT` and production branch to
-  `JOTNOW_PAGES_BRANCH` (default: `main`).
+- Match its name to `KINJOT_PAGES_PROJECT` and production branch to
+  `KINJOT_PAGES_BRANCH` (default: `main`).
 - Give your Cloudflare token Pages edit access in that account.
 
 An empty Pages project is enough. The updater checks it but does not create it.
@@ -73,8 +73,8 @@ Open **Settings → Secrets and variables → Actions** in your repository.
 
 | Name                    | Value                            | Required for |
 | ----------------------- | -------------------------------- | ------------ |
-| `JOTNOW_LICENSE_KEY`    | Your license key                 | Both modes   |
-| `JOTNOW_DATABASE_URL`   | Supabase Postgres connection URL | Both modes   |
+| `KINJOT_LICENSE_KEY`    | Your license key                 | Both modes   |
+| `KINJOT_DATABASE_URL`   | Supabase Postgres connection URL | Both modes   |
 | `SUPABASE_ACCESS_TOKEN` | Supabase Management API token    | Both modes   |
 | `CLOUDFLARE_API_TOKEN`  | Token with Pages edit access     | `full`       |
 | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account ID            | `full`       |
@@ -83,14 +83,14 @@ Open **Settings → Secrets and variables → Actions** in your repository.
 
 | Name                          | Value                                                                      |
 | ----------------------------- | -------------------------------------------------------------------------- |
-| `JOTNOW_SUPABASE_PROJECT_REF` | Your Supabase project ref                                                  |
-| `JOTNOW_DEPLOYMENT_MODE`      | Optional: `full` or `backend-only`; new installs default to `backend-only` |
-| `JOTNOW_PAGES_PROJECT`        | Existing Pages project name; `full` only                                   |
-| `JOTNOW_PAGES_BRANCH`         | Pages production branch; defaults to `main`                                |
+| `KINJOT_SUPABASE_PROJECT_REF` | Your Supabase project ref                                                  |
+| `KINJOT_DEPLOYMENT_MODE`      | Optional: `full` or `backend-only`; new installs default to `backend-only` |
+| `KINJOT_PAGES_PROJECT`        | Existing Pages project name; `full` only                                   |
+| `KINJOT_PAGES_BRANCH`         | Pages production branch; defaults to `main`                                |
 
 The database URL is used for migrations. `SUPABASE_ACCESS_TOKEN` deploys
 functions and has **account-wide access**. Both must target your intended
-project. Jotnow never receives these credentials.
+project. Kinjot never receives these credentials.
 
 Either connection URL from the **Connect** dialog works. Supabase publishes the
 direct host `db.<ref>.supabase.co` over IPv6 only, and GitHub-hosted runners are
@@ -103,13 +103,13 @@ says so and names the session pooler.
 
 In **Supabase Dashboard → Authentication → URL Configuration**, set:
 
-- **Site URL:** `https://byo.jotnow.dev` for the included web app.
-- **Redirect URL:** `https://byo.jotnow.dev/app`.
+- **Site URL:** `https://byo.kinjot.com` for the included web app.
+- **Redirect URL:** `https://byo.kinjot.com/app`.
 
 For own hosting, use your Pages origin and that origin plus `/app` instead.
 
-The updater does not change Auth settings. `JOTNOW_SITE_URL` and
-`JOTNOW_AUTH_CALLBACK_URL` are no longer required and do not configure Supabase.
+The updater does not change Auth settings. `KINJOT_SITE_URL` and
+`KINJOT_AUTH_CALLBACK_URL` are no longer required and do not configure Supabase.
 
 For the default setup:
 
@@ -136,7 +136,7 @@ Missing AI configuration does not invalidate a working notes installation.
 Presence of a key is not proof that it is valid or that its provider is healthy.
 Saved Recall history remains available to browse.
 
-Open **Settings → Account → Enable AI** in Jotnow and use **Recheck** after
+Open **Settings → Account → Enable AI** in Kinjot and use **Recheck** after
 adding keys. This reads configuration status from your authenticated backend;
 it never returns key values. When both keys are present, pending AI work can
 resume. If a configured provider rejects requests or is unavailable, check its
@@ -153,10 +153,10 @@ that changing secrets does not require redeploying functions.
   backfill, even when up to date or pinned. You can run `backfill` separately.
 - Keep backups; they are recommended, not a deployment requirement.
 - If an update fails, retry the **same release and mode** after fixing the cause.
-  Do not reset the backend, edit `.jotnow`, or switch releases to bypass recovery.
+  Do not reset the backend, edit `.kinjot`, or switch releases to bypass recovery.
 - Migration drift stops updates. Use [the recovery guidance](#recovering-a-failed-run);
   updates never rewrite migration history.
-- The shared app at `byo.jotnow.dev` is built for the newest release and is
+- The shared app at `byo.kinjot.com` is built for the newest release and is
   tested against the release before it. Two or more releases behind is outside
   that window: the app may report that your database is behind and stop syncing
   until you run `update`; notes already on the device stay there. Run `update`
@@ -167,7 +167,7 @@ that changing secrets does not require redeploying functions.
 1. Resolve any incomplete update in its recorded mode.
 2. Create the Pages project and add its credentials.
 3. With the current template and a **newer release available**, set
-   `JOTNOW_DEPLOYMENT_MODE=full` and run `update`.
+   `KINJOT_DEPLOYMENT_MODE=full` and run `update`.
 
 Keep that mode for future updates. Switching back to `backend-only` is unsupported,
 as is adding Pages from the same already-installed release.
@@ -175,7 +175,7 @@ as is adding Pages from the same already-installed release.
 ### Automatic updates — off by default
 
 Updates run when you dispatch them. To update on a schedule instead, add a
-trigger under `on` in `.github/workflows/jotnow-deployment.yml`:
+trigger under `on` in `.github/workflows/kinjot-deployment.yml`:
 
 ```yaml
 on:
@@ -200,7 +200,7 @@ every week. GitHub also suspends scheduled workflows after **60 days** without
 repository activity, and a repository only the cron touches is exactly that
 case — check occasionally that it is still running.
 
-Setting the `JOTNOW_DEPLOYMENT_MODE` variable overrides your recorded mode, so
+Setting the `KINJOT_DEPLOYMENT_MODE` variable overrides your recorded mode, so
 leave it unset once installed unless you intend every future run, scheduled
 ones included, to use that mode.
 
@@ -225,7 +225,7 @@ It runs from the current template so fixes also apply to older installed release
 
 The customer workflow needs only database and Supabase project credentials.
 It does not receive provider keys. The normal AI setup path uses the **Enable
-AI** section of Jotnow Settings to check configuration stored in Supabase.
+AI** section of Kinjot Settings to check configuration stored in Supabase.
 
 The standalone Doctor CLI still supports **locally supplied probe
 credentials** for explicit operator diagnostics. These do not read your
@@ -283,21 +283,21 @@ license key is refused before any provider request.
 
 **Lost your deployment repository?** The license allows one linked deployment,
 and `unlink` needs the instance ID stored in this repository. The repository
-also holds `.jotnow/deployment`, the record of what is installed in your
+also holds `.kinjot/deployment`, the record of what is installed in your
 Supabase project, and no command can take over an installed project without
 it. So the way back depends on what you have:
 
 - **A copy of the old repository** (a clone, a fork, a backup): restore it,
-  including `.jotnow/deployment`, and carry on with `update` as before.
+  including `.kinjot/deployment`, and carry on with `update` as before.
 - **No copy, and you want to keep your existing Supabase project and its
-  notes:** email hello@jotnow.dev with your order number. Do not run `setup`
+  notes:** email hello@kinjot.com with your order number. Do not run `setup`
   against that project from a new repository: it refuses a project that
-  already holds Jotnow, after spending your license's activation.
+  already holds Kinjot, after spending your license's activation.
 - **No copy, starting over on a new, empty Supabase project:** free the old
   activation first — open Lemon Squeezy's
   [My Orders](https://app.lemonsqueezy.com/my-orders) page, open the order and
   its license, and deactivate the old activation if the page offers that, or
-  email hello@jotnow.dev with your order number — then run `setup` in a new
+  email hello@kinjot.com with your order number — then run `setup` in a new
   repository created from this template.
 
 ## Technical details
@@ -307,7 +307,7 @@ it. So the way back depends on what you have:
   private application source.
 - **Channel:** pins the production endpoint, licensed product, and trust root.
   Disabled enrollment makes Link and Update refuse before provider calls.
-- **Recovery records:** the configuration branch stores progress. `.jotnow/instance.json`
+- **Recovery records:** the configuration branch stores progress. `.kinjot/instance.json`
   holds a SHA-256 key fingerprint, product ownership, and lifecycle state;
   the license key stays in GitHub Secrets.
 - **Tooling:** Supabase CLI 2.111.0, pnpm 10.15.1, and Wrangler 4.136.1 are
@@ -317,5 +317,5 @@ it. So the way back depends on what you have:
 ## License
 
 This template and its deployment tools use the [MIT License](LICENSE).
-Downloaded Jotnow application bundles use their separate commercial license;
-MIT does not cover the purchased app or private Jotnow source.
+Downloaded Kinjot application bundles use their separate commercial license;
+MIT does not cover the purchased app or private Kinjot source.

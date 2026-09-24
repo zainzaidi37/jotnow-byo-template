@@ -6,7 +6,7 @@ import { instanceConfigBytes } from './license-lifecycle.mjs';
 
 const COMMIT = /^[a-f0-9]{40}$/;
 const BRANCH = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$/;
-const CONFIG_PATH = '.jotnow/instance.json';
+const CONFIG_PATH = '.kinjot/instance.json';
 
 function fixed(code = 'checkpoint_failed') {
   return Object.assign(new Error('instance configuration checkpoint failed'), {
@@ -118,12 +118,12 @@ export class GitInstanceStore {
     }
     await this.git(this.repository, [
       '-c',
-      'user.name=Jotnow updater',
+      'user.name=Kinjot updater',
       '-c',
       'user.email=updater@invalid',
       'commit',
       '-m',
-      value ? 'Link Jotnow release instance' : 'Unlink Jotnow release instance',
+      value ? 'Link Kinjot release instance' : 'Unlink Kinjot release instance',
       '--',
       CONFIG_PATH,
     ]);

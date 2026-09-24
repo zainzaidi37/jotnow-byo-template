@@ -25,7 +25,7 @@ const QUERIES = {
   migrations: `SELECT version::text
 FROM supabase_migrations.schema_migrations
 ORDER BY version;`,
-  epoch: 'SELECT public.jotnow_schema_compatibility()::text;',
+  epoch: 'SELECT public.kinjot_schema_compatibility()::text;',
   marker: `SELECT self_hosted
 FROM public.deployment_settings
 WHERE id = true;`,
@@ -200,7 +200,7 @@ function databaseEnvironment(databaseUrl, timeoutMs) {
     ...(executableSearchPath === undefined ? {} : { PATH: executableSearchPath }),
     LANG: 'C',
     LC_ALL: 'C',
-    PGAPPNAME: 'jotnow-byo-doctor',
+    PGAPPNAME: 'kinjot-byo-doctor',
     PGCONNECT_TIMEOUT: String(Math.max(1, Math.ceil(timeoutMs / 1000))),
     PGDATABASE: database,
     PGHOST: hostname,
@@ -224,7 +224,7 @@ ${query}
 \\set doctor_failed :ERROR
 \\set doctor_sqlstate :SQLSTATE
 ROLLBACK;
-\\echo __JOTNOW_SQLSTATE__ :doctor_sqlstate
+\\echo __KINJOT_SQLSTATE__ :doctor_sqlstate
 \\quit
 `;
 }
@@ -247,7 +247,7 @@ function classifyFailure(exitCode, stderr, savedSqlstate) {
 }
 
 function parseSqlstateFooter(stdout) {
-  const match = /(?:^|\n)__JOTNOW_SQLSTATE__ ([0-9A-Z]{5})\n?$/.exec(stdout);
+  const match = /(?:^|\n)__KINJOT_SQLSTATE__ ([0-9A-Z]{5})\n?$/.exec(stdout);
   if (!match) throw safeError('invalid_response');
   return { data: stdout.slice(0, match.index), sqlstate: match[1] };
 }

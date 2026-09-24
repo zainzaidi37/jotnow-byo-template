@@ -36,7 +36,7 @@ async function assertLayout(repository, stateDirectory) {
   const repo = resolve(repository);
   const state = resolve(stateDirectory);
   const path = relative(repo, state).split(sep).join('/');
-  if (path !== '.jotnow/deployment') throw fixed('durable state path must be .jotnow/deployment');
+  if (path !== '.kinjot/deployment') throw fixed('durable state path must be .kinjot/deployment');
   const repoStat = await lstat(repo);
   const stateParent = dirname(state);
   await mkdir(stateParent, { recursive: true, mode: 0o700 }).catch(() => {
@@ -53,8 +53,8 @@ async function assertLayout(repository, stateDirectory) {
 
 function allowedPath(path, sequence) {
   return (
-    path === '.jotnow/deployment/deployment-state.json' ||
-    path.startsWith(`.jotnow/deployment/control/${sequence}/`)
+    path === '.kinjot/deployment/deployment-state.json' ||
+    path.startsWith(`.kinjot/deployment/control/${sequence}/`)
   );
 }
 
@@ -100,7 +100,7 @@ export class GitCheckpointStore {
     if (staged.length === 0) return written;
     await this.git(repo, [
       '-c',
-      'user.name=Jotnow updater',
+      'user.name=Kinjot updater',
       '-c',
       'user.email=updater@invalid',
       'commit',

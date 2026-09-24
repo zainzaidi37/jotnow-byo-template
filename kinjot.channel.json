@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "channel": "production",
+  "enabled": true,
+  "releaseEndpoint": "https://kinjot-byo-release-production.eng-zain37.workers.dev/v1/releases/download",
+  "r2Origin": "https://ba01d4b4de3f0c7109d1a1573d255785.us.r2.cloudflarestorage.com",
+  "storeId": 425972,
+  "productId": 1361937,
+  "trustList": "trust/production-v1.json"
+}

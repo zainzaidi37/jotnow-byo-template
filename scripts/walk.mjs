@@ -34,14 +34,14 @@ const TEMPLATE = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CUSTOMER_CLI = join(TEMPLATE, 'vendor', 'scripts', 'byo-updater', 'customer-cli.mjs');
 
 /**
- * The child's environment: the parent's, minus `JOTNOW_AUTHENTICATED_CONTROL`.
+ * The child's environment: the parent's, minus `KINJOT_AUTHENTICATED_CONTROL`.
  * That flag tells the bootstrap it is already running inside an authenticated
  * control, so passing it would make a hop skip the hand-off to the installed
  * release.
  */
 export function childEnvironment(env) {
   const copy = { ...env };
-  delete copy.JOTNOW_AUTHENTICATED_CONTROL;
+  delete copy.KINJOT_AUTHENTICATED_CONTROL;
   return copy;
 }
 
@@ -108,7 +108,7 @@ export async function runWalk({
       return Number.isInteger(code) && code > 0 && code < 256 ? code : 1;
     }
     if (after.sequence === before.sequence) {
-      const pin = env.JOTNOW_RELEASE_PIN;
+      const pin = env.KINJOT_RELEASE_PIN;
       if (pin) write(`Stopped at the pinned release ${pin}.`);
       else if (after.sequence === 0) write('The deployment has no installed release.');
       else write(`Deployment is current at ${after.version} (sequence ${after.sequence}).`);
@@ -167,13 +167,13 @@ export function spawnUpdate(
 
 /**
  * Exactly the directory the bootstrap uses (`customer-cli.mjs` `main`: the
- * workspace, then `.jotnow/deployment`), and deliberately NOT
- * `JOTNOW_UPDATER_STATE`: the bootstrap ignores that variable, so honouring
+ * workspace, then `.kinjot/deployment`), and deliberately NOT
+ * `KINJOT_UPDATER_STATE`: the bootstrap ignores that variable, so honouring
  * it here could read a different state than the hops write and misreport a
  * deployment as current.
  */
 export function stateDirectory(env = process.env) {
-  return join(resolve(env.GITHUB_WORKSPACE || process.cwd()), '.jotnow', 'deployment');
+  return join(resolve(env.GITHUB_WORKSPACE || process.cwd()), '.kinjot', 'deployment');
 }
 
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {

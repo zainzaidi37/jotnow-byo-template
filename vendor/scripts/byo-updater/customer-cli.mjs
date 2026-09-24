@@ -55,8 +55,8 @@ function isModeWidening(state, mode) {
 
 async function withLegacyOperatorUrlDefaults(operation) {
   const defaults = {
-    JOTNOW_SITE_URL: 'http://127.0.0.1',
-    JOTNOW_AUTH_CALLBACK_URL: 'http://127.0.0.1/auth/callback',
+    KINJOT_SITE_URL: 'http://127.0.0.1',
+    KINJOT_AUTH_CALLBACK_URL: 'http://127.0.0.1/auth/callback',
   };
   const previous = new Map();
   for (const [name, value] of Object.entries(defaults)) {
@@ -81,7 +81,7 @@ function licenseRecovery(recoveryAction = 'link') {
 }
 
 /**
- * Every caller passes `process.env.JOTNOW_LICENSE_KEY`, so the value is a
+ * Every caller passes `process.env.KINJOT_LICENSE_KEY`, so the value is a
  * string or absent — the first branch covers absent, and there is no third
  * case worth a `typeof` test.
  *
@@ -141,7 +141,7 @@ function exactKeys(value, keys) {
 async function channelConfig(repository) {
   let value;
   try {
-    value = JSON.parse(await readFile(join(repository, 'jotnow.channel.json'), 'utf8'));
+    value = JSON.parse(await readFile(join(repository, 'kinjot.channel.json'), 'utf8'));
   } catch {
     throw fixed();
   }
@@ -196,8 +196,8 @@ function git(repository, args) {
 let resolvedDatabaseEndpoint = null;
 
 async function operatorDatabaseUrl(repository, dependencies = {}) {
-  const databaseUrl = process.env.JOTNOW_DATABASE_URL;
-  const psql = process.env.JOTNOW_PSQL_BIN;
+  const databaseUrl = process.env.KINJOT_DATABASE_URL;
+  const psql = process.env.KINJOT_PSQL_BIN;
   // Without a probe there is no evidence of unreachability, and resolving on a
   // failure we cannot observe would replace a precise configuration refusal
   // with a misleading one.
@@ -205,10 +205,10 @@ async function operatorDatabaseUrl(repository, dependencies = {}) {
   if (resolvedDatabaseEndpoint?.databaseUrl === databaseUrl) {
     return resolvedDatabaseEndpoint.resolved;
   }
-  const timeoutMs = Number(process.env.JOTNOW_UPDATE_TIMEOUT_MS || 120_000);
+  const timeoutMs = Number(process.env.KINJOT_UPDATE_TIMEOUT_MS || 120_000);
   const resolved = await (dependencies.resolveDatabaseEndpoint ?? resolveDatabaseEndpoint)({
     databaseUrl,
-    projectRef: process.env.JOTNOW_SUPABASE_PROJECT_REF,
+    projectRef: process.env.KINJOT_SUPABASE_PROJECT_REF,
     managementToken: process.env.SUPABASE_ACCESS_TOKEN,
     timeoutMs,
     probe: dependencies.databaseProbe ?? createPsqlProbe({ psql, cwd: repository, timeoutMs }),
@@ -221,25 +221,25 @@ function operatorConfig(
   mode,
   stateDirectory,
   trustListPath,
-  databaseUrl = process.env.JOTNOW_DATABASE_URL,
+  databaseUrl = process.env.KINJOT_DATABASE_URL,
 ) {
   return validateOperatorConfig(
     {
       databaseUrl,
-      projectRef: process.env.JOTNOW_SUPABASE_PROJECT_REF,
+      projectRef: process.env.KINJOT_SUPABASE_PROJECT_REF,
       managementToken: process.env.SUPABASE_ACCESS_TOKEN,
       cloudflareToken: process.env.CLOUDFLARE_API_TOKEN,
       cloudflareAccountId: process.env.CLOUDFLARE_ACCOUNT_ID,
-      pagesProject: process.env.JOTNOW_PAGES_PROJECT,
-      pagesBranch: process.env.JOTNOW_PAGES_BRANCH || 'main',
+      pagesProject: process.env.KINJOT_PAGES_PROJECT,
+      pagesBranch: process.env.KINJOT_PAGES_BRANCH || 'main',
       stateDirectory,
       trustListPath,
       executables: {
-        psql: process.env.JOTNOW_PSQL_BIN,
-        supabase: process.env.JOTNOW_SUPABASE_BIN,
-        wrangler: process.env.JOTNOW_WRANGLER_BIN,
+        psql: process.env.KINJOT_PSQL_BIN,
+        supabase: process.env.KINJOT_SUPABASE_BIN,
+        wrangler: process.env.KINJOT_WRANGLER_BIN,
       },
-      timeoutMs: Number(process.env.JOTNOW_UPDATE_TIMEOUT_MS || 120_000),
+      timeoutMs: Number(process.env.KINJOT_UPDATE_TIMEOUT_MS || 120_000),
     },
     { mode },
   );
@@ -253,7 +253,7 @@ async function resolveOperatorConfig(
   repository,
   dependencies,
 ) {
-  const configuredDatabaseUrl = process.env.JOTNOW_DATABASE_URL;
+  const configuredDatabaseUrl = process.env.KINJOT_DATABASE_URL;
   // Validate every operator prerequisite before the new reachability probes or
   // Management API request. Otherwise a missing token, unsafe executable, or
   // invalid timeout can be hidden behind the fallback's IPv6 refusal.
@@ -277,12 +277,12 @@ export async function selectInstalledControl(
   argv,
   authenticate = authenticateHandoffControl,
 ) {
-  if (process.env.JOTNOW_AUTHENTICATED_CONTROL === '1') return false;
+  if (process.env.KINJOT_AUTHENTICATED_CONTROL === '1') return false;
   const state = await readHandoffStateFile(stateDirectory);
   if (!state?.updaterControl) return false;
   const effectiveArgv =
     argv[0] === 'update' && argv.length === 1
-      ? ['update', process.env.JOTNOW_DEPLOYMENT_MODE || state.mode]
+      ? ['update', process.env.KINJOT_DEPLOYMENT_MODE || state.mode]
       : argv;
   let authenticated;
   try {
@@ -348,10 +348,10 @@ export async function selectInstalledControl(
   if (initialRecoveryUpdate) return false;
   const entry = join(authenticated.root, 'scripts/byo-updater/customer-cli.mjs');
   const module = await import(pathToFileURL(entry).href);
-  const selected = Object.hasOwn(process.env, 'JOTNOW_AUTHENTICATED_CONTROL')
-    ? process.env.JOTNOW_AUTHENTICATED_CONTROL
+  const selected = Object.hasOwn(process.env, 'KINJOT_AUTHENTICATED_CONTROL')
+    ? process.env.KINJOT_AUTHENTICATED_CONTROL
     : undefined;
-  process.env.JOTNOW_AUTHENTICATED_CONTROL = '1';
+  process.env.KINJOT_AUTHENTICATED_CONTROL = '1';
   let result;
   try {
     result = await withLegacyOperatorUrlDefaults(() => module.main(effectiveArgv));
@@ -373,23 +373,24 @@ export async function selectInstalledControl(
     // authenticated; this one would otherwise print a healthy-looking report
     // from an older local diagnostic while the installed one stays broken and
     // the workflow step stays green. One bounded line names what failed.
-    const reason = (
-      typeof error?.message === 'string' ? error.message : String(error)
-    ).slice(0, 500);
+    const reason = (typeof error?.message === 'string' ? error.message : String(error)).slice(
+      0,
+      500,
+    );
     process.stderr.write(
       `Installed release diagnostics did not run (${reason}); falling back to ` +
         `this repository's vendored doctor. The installed release's own ` +
         `diagnostic is broken and needs attention.\n`,
     );
-    if (selected === undefined) delete process.env.JOTNOW_AUTHENTICATED_CONTROL;
-    else process.env.JOTNOW_AUTHENTICATED_CONTROL = selected;
+    if (selected === undefined) delete process.env.KINJOT_AUTHENTICATED_CONTROL;
+    else process.env.KINJOT_AUTHENTICATED_CONTROL = selected;
     return false;
   }
   return Number.isInteger(result) ? result : true;
 }
 
 async function stores(repository, stateDirectory) {
-  const branch = process.env.JOTNOW_CONFIGURATION_BRANCH || process.env.GITHUB_REF_NAME;
+  const branch = process.env.KINJOT_CONFIGURATION_BRANCH || process.env.GITHUB_REF_NAME;
   if (!branch) throw new UpdaterRefusal('configuration_branch_missing');
   const expectedHead = await git(repository, ['rev-parse', 'HEAD']);
   const localStore = new FileStateStore(stateDirectory);
@@ -426,14 +427,14 @@ export async function update(repository, stateDirectory, mode, dependencies = {}
   const durable = await createStores(repository, stateDirectory);
   const instance = await durable.instance.read();
   if (!instance || instance.status !== 'linked') throw new UpdaterRefusal('deployment_not_linked');
-  const licenseKey = commandLicenseKey(process.env.JOTNOW_LICENSE_KEY);
+  const licenseKey = commandLicenseKey(process.env.KINJOT_LICENSE_KEY);
   assertIntentLicense(instance, licenseKey);
   if (instance.storeId !== channel.storeId || instance.productId !== channel.productId) {
     throw new UpdaterRefusal('channel_mismatch');
   }
   const state = await durable.checkpoint.read();
   const widening = isModeWidening(state, mode);
-  const requestedPin = process.env.JOTNOW_RELEASE_PIN || null;
+  const requestedPin = process.env.KINJOT_RELEASE_PIN || null;
   if (state?.attempt && requestedPin && requestedPin !== state.attempt.target.version) {
     throw new UpdaterRefusal('recovery_target_mismatch');
   }
@@ -492,8 +493,8 @@ export async function link(repository, durable, channel, rest, dependencies) {
     if (rest.length !== 2 || rest[0] !== '--adopt-instance') throw fixed();
     adoption = rest[1];
   }
-  const licenseKey = commandLicenseKey(process.env.JOTNOW_LICENSE_KEY);
-  const instanceName = process.env.JOTNOW_INSTANCE_NAME || basename(repository);
+  const licenseKey = commandLicenseKey(process.env.KINJOT_LICENSE_KEY);
+  const instanceName = process.env.KINJOT_INSTANCE_NAME || basename(repository);
   let lifecycle = await durable.instance.read();
   if (lifecycle) assertIntentLicense(lifecycle, licenseKey);
   if (
@@ -617,7 +618,7 @@ async function unlink(durable, channel, rest, dependencies) {
   if (rest.length) throw fixed();
   let lifecycle = await durable.instance.read();
   if (!lifecycle) throw new UpdaterRefusal('deployment_not_linked');
-  const licenseKey = commandLicenseKey(process.env.JOTNOW_LICENSE_KEY);
+  const licenseKey = commandLicenseKey(process.env.KINJOT_LICENSE_KEY);
   assertIntentLicense(lifecycle, licenseKey);
   if (lifecycle.storeId !== channel.storeId || lifecycle.productId !== channel.productId) {
     throw new UpdaterRefusal('channel_mismatch');
@@ -691,7 +692,7 @@ export async function doctor(repository, stateDirectory, argv, dependencies = {}
   const state = await durable.checkpoint.read();
   if (!state?.updaterControl) {
     output(
-      'Jotnow doctor: unavailable\nNo authenticated installed release inventory is available; complete an authenticated install before running doctor.\nRead-only diagnostics; no changes made.\n',
+      'Kinjot doctor: unavailable\nNo authenticated installed release inventory is available; complete an authenticated install before running doctor.\nRead-only diagnostics; no changes made.\n',
     );
     return 2;
   }
@@ -702,17 +703,17 @@ export async function doctor(repository, stateDirectory, argv, dependencies = {}
     )({ stateDirectory, state });
   } catch {
     output(
-      'Jotnow doctor: unavailable\nThe installed release inventory could not be authenticated; no diagnostic provider request was made.\nRead-only diagnostics; no changes made.\n',
+      'Kinjot doctor: unavailable\nThe installed release inventory could not be authenticated; no diagnostic provider request was made.\nRead-only diagnostics; no changes made.\n',
     );
     return 2;
   }
   const manifest = authenticated.manifest;
-  const timeoutMs = Number(process.env.JOTNOW_DOCTOR_TIMEOUT_MS || 5000);
+  const timeoutMs = Number(process.env.KINJOT_DOCTOR_TIMEOUT_MS || 5000);
   let database;
-  if (process.env.JOTNOW_DATABASE_URL) {
+  if (process.env.KINJOT_DATABASE_URL) {
     try {
       database = (dependencies.createDatabaseAdapter ?? createDatabaseAdapter)({
-        databaseUrl: process.env.JOTNOW_DATABASE_URL,
+        databaseUrl: process.env.KINJOT_DATABASE_URL,
         timeoutMs,
       });
     } catch {
@@ -726,7 +727,7 @@ export async function doctor(repository, stateDirectory, argv, dependencies = {}
     }
   }
   const http = (dependencies.createHttpAdapters ?? createHttpAdapters)({
-    projectRef: process.env.JOTNOW_SUPABASE_PROJECT_REF,
+    projectRef: process.env.KINJOT_SUPABASE_PROJECT_REF,
     managementToken: process.env.SUPABASE_ACCESS_TOKEN,
     openaiKey: coreOnly ? undefined : process.env.OPENAI_API_KEY,
     voyageKey: coreOnly ? undefined : process.env.VOYAGE_API_KEY,
@@ -762,13 +763,13 @@ export async function setup(repository, stateDirectory, dependencies = {}) {
   const channel = await readChannel(repository);
   const durable = await createStores(repository, stateDirectory);
   const state = await durable.checkpoint.read();
-  const requestedMode = process.env.JOTNOW_DEPLOYMENT_MODE || null;
+  const requestedMode = process.env.KINJOT_DEPLOYMENT_MODE || null;
   if (requestedMode && !['full', 'backend-only'].includes(requestedMode)) {
     throw new UpdaterRefusal('deployment_mode_invalid');
   }
   const mode = requestedMode ?? state?.mode ?? 'backend-only';
   if (state?.mode === 'full' && mode !== 'full') throw new UpdaterRefusal('mode_mismatch');
-  const licenseKey = commandLicenseKey(process.env.JOTNOW_LICENSE_KEY);
+  const licenseKey = commandLicenseKey(process.env.KINJOT_LICENSE_KEY);
 
   // Validate database/project binding and every mode-specific credential before
   // the public license provider can be mutated.
@@ -814,21 +815,21 @@ export async function setup(repository, stateDirectory, dependencies = {}) {
   const installed = completed?.installedRelease;
   output(
     [
-      'Jotnow setup complete.',
+      'Kinjot setup complete.',
       `Core installation checks passed (${mode}).`,
       ...(installed ? [`Release: ${installed.version} (sequence ${installed.sequence})`] : []),
-      `App: ${mode === 'backend-only' ? 'https://byo.jotnow.dev' : `https://${config.pagesProject}.pages.dev`}`,
+      `App: ${mode === 'backend-only' ? 'https://byo.kinjot.com' : `https://${config.pagesProject}.pages.dev`}`,
       `Supabase project URL: https://${config.projectRef}.supabase.co`,
       'Next: create a confirmed operator account in Supabase Auth.',
-      'Then open the app, enter the receipt license at the byo.jotnow.dev gate when using the included app, and connect with your public project URL and publishable key.',
-      'AI is optional and was not checked here. Add provider secrets in Supabase later, then use Recheck in Jotnow Settings → Account → Enable AI.',
+      'Then open the app, enter the receipt license at the byo.kinjot.com gate when using the included app, and connect with your public project URL and publishable key.',
+      'AI is optional and was not checked here. Add provider secrets in Supabase later, then use Recheck in Kinjot Settings → Account → Enable AI.',
     ].join('\n') + '\n',
   );
 }
 
 export async function main(argv = process.argv.slice(2), dependencies = {}) {
   const repository = resolve(process.env.GITHUB_WORKSPACE || process.cwd());
-  const stateDirectory = join(repository, '.jotnow', 'deployment');
+  const stateDirectory = join(repository, '.kinjot', 'deployment');
   const delegated = await (dependencies.selectInstalledControl ?? selectInstalledControl)(
     repository,
     stateDirectory,
@@ -842,7 +843,7 @@ export async function main(argv = process.argv.slice(2), dependencies = {}) {
   }
   if (command === 'update') {
     const recorded = rest.length === 0 ? await new FileStateStore(stateDirectory).read() : null;
-    const mode = rest[0] || process.env.JOTNOW_DEPLOYMENT_MODE || recorded?.mode || 'backend-only';
+    const mode = rest[0] || process.env.KINJOT_DEPLOYMENT_MODE || recorded?.mode || 'backend-only';
     if (!['full', 'backend-only'].includes(mode) || rest.length > 1) throw fixed();
     await update(repository, stateDirectory, mode, dependencies);
     return;

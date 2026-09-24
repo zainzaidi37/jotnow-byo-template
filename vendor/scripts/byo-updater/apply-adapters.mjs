@@ -301,7 +301,7 @@ export function createUpdaterAdapters(config, dependencies = {}) {
    * release handshake (`apps/web/src/data/release-handshake.ts`).
    *
    * The schema axis has the compatibility epoch and CI's N−1 migration replay;
-   * the frontend ↔ Edge Function axis had nothing, because `byo.jotnow.dev`
+   * the frontend ↔ Edge Function axis had nothing, because `byo.kinjot.com`
    * serves catalog head to a backend the operator updates by hand. One
    * function (`usage-limits`) reports this value in a response header and the
    * client says "run update" when it is behind.
@@ -333,7 +333,7 @@ export function createUpdaterAdapters(config, dependencies = {}) {
           Authorization: `Bearer ${config.managementToken}`,
           'content-type': 'application/json',
         },
-        body: JSON.stringify([{ name: 'JOTNOW_RELEASE_SEQUENCE', value: String(sequence) }]),
+        body: JSON.stringify([{ name: 'KINJOT_RELEASE_SEQUENCE', value: String(sequence) }]),
       },
       config.timeoutMs,
       'supabase_management_access',

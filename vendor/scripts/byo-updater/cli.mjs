@@ -95,30 +95,30 @@ function argumentsMap(argv) {
 export function configFromEnvironment(mode, databaseOnly = false) {
   return validateOperatorConfig(
     {
-      databaseUrl: process.env.JOTNOW_DATABASE_URL,
-      projectRef: process.env.JOTNOW_SUPABASE_PROJECT_REF,
+      databaseUrl: process.env.KINJOT_DATABASE_URL,
+      projectRef: process.env.KINJOT_SUPABASE_PROJECT_REF,
       managementToken: process.env.SUPABASE_ACCESS_TOKEN,
       cloudflareToken: process.env.CLOUDFLARE_API_TOKEN,
       cloudflareAccountId: process.env.CLOUDFLARE_ACCOUNT_ID,
-      pagesProject: process.env.JOTNOW_PAGES_PROJECT,
-      pagesBranch: process.env.JOTNOW_PAGES_BRANCH || 'main',
-      stateDirectory: resolve(process.env.JOTNOW_UPDATER_STATE || '.jotnow-byo-state'),
-      trustListPath: resolve(process.env.JOTNOW_TRUST_LIST || 'release/trust-list.json'),
+      pagesProject: process.env.KINJOT_PAGES_PROJECT,
+      pagesBranch: process.env.KINJOT_PAGES_BRANCH || 'main',
+      stateDirectory: resolve(process.env.KINJOT_UPDATER_STATE || '.kinjot-byo-state'),
+      trustListPath: resolve(process.env.KINJOT_TRUST_LIST || 'release/trust-list.json'),
       executables: {
-        psql: process.env.JOTNOW_PSQL_BIN,
-        supabase: process.env.JOTNOW_SUPABASE_BIN,
-        wrangler: process.env.JOTNOW_WRANGLER_BIN,
+        psql: process.env.KINJOT_PSQL_BIN,
+        supabase: process.env.KINJOT_SUPABASE_BIN,
+        wrangler: process.env.KINJOT_WRANGLER_BIN,
       },
-      timeoutMs: Number(process.env.JOTNOW_UPDATE_TIMEOUT_MS || 120_000),
+      timeoutMs: Number(process.env.KINJOT_UPDATE_TIMEOUT_MS || 120_000),
     },
     { mode, databaseOnly },
   );
 }
 
 export function checkpointStoreFromEnvironment(localStore, stateDirectory) {
-  const repository = process.env.JOTNOW_CHECKPOINT_REPOSITORY;
-  const branch = process.env.JOTNOW_CHECKPOINT_BRANCH;
-  const expectedHead = process.env.JOTNOW_CHECKPOINT_HEAD;
+  const repository = process.env.KINJOT_CHECKPOINT_REPOSITORY;
+  const branch = process.env.KINJOT_CHECKPOINT_BRANCH;
+  const expectedHead = process.env.KINJOT_CHECKPOINT_HEAD;
   const configured = [repository, branch, expectedHead].filter((value) => value !== undefined);
   if (configured.length === 0) return localStore;
   if (configured.length !== 3)
